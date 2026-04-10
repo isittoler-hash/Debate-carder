@@ -192,6 +192,16 @@ function buildRequestBody() {
   };
 }
 
+function hasCompleteSourceInputs(payload) {
+  return [
+    payload.article_text,
+    payload.source_title,
+    payload.source_author,
+    payload.source_date,
+    payload.source_url,
+  ].every((value) => normalizeText(value));
+}
+
 function buildChatgptPrompt() {
   const request = buildRequestBody();
   const lines = [
@@ -481,7 +491,7 @@ function renderEmptyState() {
     articleText: '',
     query: '',
     status: 'Waiting for research',
-    mode: 'Paste text or research from a tag',
+    mode: 'Cut will auto-research when source fields are incomplete',
   });
 }
 
@@ -555,7 +565,7 @@ function renderSourceSummary(research) {
     },
     {
       label: 'Evidence mode',
-      value: normalizeText(research?.mode) || normalizeText(research?.status) || 'Paste text or research from a tag',
+      value: normalizeText(research?.mode) || normalizeText(research?.status) || 'Cut will auto-research when source fields are incomplete',
     },
     {
       label: 'Source details',
@@ -900,17 +910,15 @@ researchBtn.addEventListener('click', requestResearchMode);
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const payload = buildRequestBody();
+  const shouldAutoResearch = !hasCompleteSourceInputs(payload) && !!(payload.draft_tag || payload.source_url);
 
-  if (!payload.article_text) {
-    if (!payload.draft_tag) {
-      setStatus('Paste source text or enter a draft tag before cutting.', 'error');
-      return;
-    }
-    setStatus('Researching from the draft tag...', '');
+  if (!payload.article_text && !payload.source_url && !payload.draft_tag) {
+    setStatus('Paste source text, enter a draft tag, or provide a source URL before cutting.', 'error');
+    return;
   }
 
   setBusy(true);
-  setStatus('Cutting one card...', '');
+  setStatus(shouldAutoResearch ? 'Researching missing source fields, then cutting one card...' : 'Cutting one card...', '');
   metaEl.textContent = 'Sending request to /api/cut.';
 
   try {

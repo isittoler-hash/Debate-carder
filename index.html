@@ -73,7 +73,7 @@
         <label class="field field-hero">
           <span>Draft tag</span>
           <input id="draft-tag" name="draftTag" type="text" placeholder="Green steel hurts manufacturing costs" autocomplete="off">
-          <small>Enter the rough argument you want cut into a single card. The backend can research likely sources before cutting.</small>
+          <small>Enter the rough argument you want cut into a single card. The backend will research and fill missing source fields automatically when it can.</small>
         </label>
 
         <div class="grid grid-two">
@@ -134,7 +134,7 @@
         <div class="research-strip">
           <div>
             <strong>Autonomous research</strong>
-            <p>When source text is empty, the backend should research likely sources from your draft tag, then cut one card from the best match.</p>
+            <p>If source fields are incomplete, the backend will try to research and enrich them before it cuts the card. The button below is just the manual preview step.</p>
           </div>
           <button id="research-btn" class="secondary" type="button">Research from tag</button>
         </div>
@@ -146,7 +146,7 @@
           </div>
           <div class="source-summary-item">
             <span>Evidence mode</span>
-            <strong>Paste text or research from a tag</strong>
+            <strong>Cut auto-researches when source fields are incomplete</strong>
           </div>
           <div class="source-summary-item">
             <span>Card style</span>
@@ -199,7 +199,7 @@
     <section class="output panel">
       <div class="section-head">
         <h2>Generated card</h2>
-        <p id="output-hint">No card yet. Paste evidence or enter a draft tag to research a source.</p>
+        <p id="output-hint">No card yet. Paste evidence, enter a draft tag, or let Cut auto-research missing source details.</p>
       </div>
       <div id="cards" class="cards empty-state" aria-live="polite"></div>
     </section>

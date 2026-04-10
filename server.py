@@ -978,6 +978,18 @@ def _research_query(payload: dict[str, Any]) -> str:
     return re.sub(r"\s+", " ", query).strip()
 
 
+def _missing_source_fields(payload: dict[str, Any]) -> list[str]:
+    fields = {
+        "article_text": payload.get("article_text"),
+        "source_title": payload.get("source_title"),
+        "source_author": payload.get("source_author"),
+        "source_date": payload.get("source_date"),
+        "source_url": payload.get("source_url"),
+        "source_publication": payload.get("source_publication"),
+    }
+    return [name for name, value in fields.items() if not _clean_text(value)]
+
+
 def _candidate_score(candidate: dict[str, Any], query_terms: set[str], phrase: str) -> float:
     title = _clean_text(candidate.get("title")).lower()
     description = _clean_text(candidate.get("description")).lower()
@@ -1030,8 +1042,10 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
     source_url = _normalize_web_url(_clean_text(payload.get("source_url")))
     draft_tag = _clean_text(payload.get("draft_tag"))
     query = _research_query(payload)
+    missing_fields = _missing_source_fields(payload)
+    can_research = bool(draft_tag or source_url)
 
-    if article_text:
+    if article_text and (not missing_fields or not can_research):
         return {
             "used": False,
             "query": query,
@@ -1047,6 +1061,7 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
             },
             "article_text": article_text,
             "_candidates": [],
+            "missing_fields": missing_fields,
         }
 
     discovered: list[dict[str, Any]] = []
@@ -1124,6 +1139,7 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
         },
         "article_text": selected_text,
         "_candidates": [{**item, "index": index + 1} for index, item in enumerate(ranked)],
+        "missing_fields": missing_fields,
     }
 
 
