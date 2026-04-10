@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Debate Card Cutter</title>
+  <meta name="description" content="Zero-dependency debate card cutter for one-card iterative research">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">AI debate card cutter</div>
+      <h1>Cut source text into one clean debate card at a time.</h1>
+      <p class="lede">
+        Use the backend path for local-model cutting, or use ChatGPT manually without API calls.
+        The app follows the file pattern: tag line, cite line, then evidence paragraph, with a validation pass before copy.
+      </p>
+      <div class="workflow-map" aria-label="Card cutting workflow">
+        <div class="workflow-step">
+          <span class="workflow-step-index">1</span>
+          <strong>Tag</strong>
+          <p>Enter the rough debate claim you want to cut.</p>
+        </div>
+        <div class="workflow-step">
+          <span class="workflow-step-index">2</span>
+          <strong>Research</strong>
+          <p>Find the most likely source and fill the evidence form.</p>
+        </div>
+        <div class="workflow-step">
+          <span class="workflow-step-index">3</span>
+          <strong>Cut</strong>
+          <p>Return one formatted card with cite line, read text, and context.</p>
+        </div>
+        <div class="workflow-step">
+          <span class="workflow-step-index">4</span>
+          <strong>Validate</strong>
+          <p>Check whether the card is actually useful, then revise it if needed.</p>
+        </div>
+        <div class="workflow-step">
+          <span class="workflow-step-index">5</span>
+          <strong>Copy</strong>
+          <p>Copy the final debate-ready card block.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel mode-panel">
+      <div class="section-head">
+        <div>
+          <h2>Choose a workflow</h2>
+          <p>Local model via backend, or manual ChatGPT copy/paste and validation.</p>
+        </div>
+      </div>
+      <div class="mode-switch" role="tablist" aria-label="Card cutting workflow">
+        <button id="mode-local" class="mode-button is-active" type="button" role="tab" aria-selected="true">
+          Local model
+        </button>
+        <button id="mode-chatgpt" class="mode-button" type="button" role="tab" aria-selected="false">
+          ChatGPT manual
+        </button>
+      </div>
+      <p class="notice" id="workflow-note">
+        ChatGPT subscription still is not an official app API. Use the manual workflow for the supported path, or point the backend at an experimental external bridge if you choose to run one.
+      </p>
+    </section>
+
+    <section class="panel">
+      <form id="cut-form" class="form">
+        <label class="field field-hero">
+          <span>Draft tag</span>
+          <input id="draft-tag" name="draftTag" type="text" placeholder="Green steel hurts manufacturing costs" autocomplete="off">
+          <small>Enter the rough argument you want cut into a single card. The backend can research likely sources before cutting.</small>
+        </label>
+
+        <div class="grid grid-two">
+          <label class="field">
+            <span>Resolution</span>
+            <input id="resolution" name="resolution" type="text" placeholder="Resolved: ..." autocomplete="off">
+          </label>
+
+          <label class="field">
+            <span>Side</span>
+            <select id="side" name="side">
+              <option value="affirmative">Affirmative</option>
+              <option value="negative">Negative</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Article or evidence</span>
+          <textarea id="source-text" name="sourceText" rows="14" placeholder="Paste the full article, excerpt, or evidence block here. Leave blank if you want the backend to research from the draft tag."></textarea>
+        </label>
+
+        <div class="grid grid-three">
+          <label class="field">
+            <span>Source title</span>
+            <input id="source-title" name="sourceTitle" type="text" placeholder="Article headline">
+          </label>
+
+          <label class="field">
+            <span>Author / outlet</span>
+            <input id="source-author" name="sourceAuthor" type="text" placeholder="Optional author or outlet">
+          </label>
+
+          <label class="field">
+            <span>Published</span>
+            <input id="source-date" name="sourceDate" type="text" placeholder="Optional date">
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Source URL</span>
+          <input id="source-url" name="sourceUrl" type="url" placeholder="https://...">
+        </label>
+
+        <div class="grid grid-two">
+          <div class="field field-static">
+            <span>Card mode</span>
+            <strong>One card per run</strong>
+            <small>The backend cuts one card, then validates and revises it before copy.</small>
+          </div>
+          <label class="field">
+            <span>Emphasis</span>
+            <input id="emphasis" name="emphasis" type="text" placeholder="Economy, security, solvency, etc.">
+          </label>
+        </div>
+
+        <div class="research-strip">
+          <div>
+            <strong>Autonomous research</strong>
+            <p>When source text is empty, the backend should research likely sources from your draft tag, then cut one card from the best match.</p>
+          </div>
+          <button id="research-btn" class="secondary" type="button">Research from tag</button>
+        </div>
+
+        <div class="source-summary" id="source-summary" aria-live="polite">
+          <div class="source-summary-item">
+            <span>Selected source</span>
+            <strong>Waiting for research</strong>
+          </div>
+          <div class="source-summary-item">
+            <span>Evidence mode</span>
+            <strong>Paste text or research from a tag</strong>
+          </div>
+          <div class="source-summary-item">
+            <span>Card style</span>
+            <strong>Tag line + cite line + evidence paragraph + validation pass</strong>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="submit-btn" class="primary" type="submit">
+            <span class="button-label">Cut card</span>
+            <span class="button-spinner" aria-hidden="true"></span>
+          </button>
+          <button id="copy-all-btn" class="secondary" type="button" disabled>Copy card</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="chatgpt-panel" class="panel workflow-panel is-hidden" aria-hidden="true">
+      <div class="section-head">
+        <div>
+          <h2>Manual ChatGPT workflow</h2>
+          <p>Generate a structured prompt, paste it into ChatGPT, then import the JSON it returns after the validation pass.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-two">
+        <div class="workflow-box">
+          <div class="workflow-box-head">
+            <h3>Prompt preview</h3>
+            <button id="copy-prompt-btn" class="secondary" type="button">Copy prompt</button>
+          </div>
+          <pre id="prompt-preview" class="prompt-preview" aria-label="Prompt to paste into ChatGPT"></pre>
+        </div>
+
+        <div class="workflow-box">
+          <div class="workflow-box-head">
+            <h3>Import JSON</h3>
+            <button id="render-import-btn" class="secondary" type="button">Render import</button>
+          </div>
+          <textarea id="import-json" class="import-json" rows="12" placeholder="Paste the strict JSON from ChatGPT here."></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section class="status-row" aria-live="polite">
+      <div id="status" class="status">Ready.</div>
+      <div id="meta" class="meta"></div>
+    </section>
+
+    <section class="output panel">
+      <div class="section-head">
+        <h2>Generated card</h2>
+        <p id="output-hint">No card yet. Paste evidence or enter a draft tag to research a source.</p>
+      </div>
+      <div id="cards" class="cards empty-state" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <template id="card-template">
+    <article class="card">
+      <div class="card-head">
+        <div class="card-kicker"></div>
+        <button class="card-copy" type="button">Copy</button>
+      </div>
+      <h3 class="card-title"></h3>
+      <div class="card-citation"></div>
+      <div class="card-body"></div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
