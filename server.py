@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import re
 import ssl
 import sys
 import zipfile
 from datetime import date
+from logging.handlers import RotatingFileHandler
+import time
+import urllib.error
 import urllib.request
 from collections import Counter
 from html import escape, unescape
@@ -17,6 +21,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
+from uuid import uuid4
+import xml.etree.ElementTree as ET
 
 try:
     from pypdf import PdfReader  # type: ignore
@@ -43,6 +49,9 @@ def _load_env_file(path: Path) -> None:
 
 ROOT = Path(__file__).resolve().parent
 _load_env_file(ROOT / ".env")
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "server.log"
 MAX_BODY_BYTES = 5 * 1024 * 1024
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.1")
 OPENAI_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1/responses")
@@ -52,6 +61,10 @@ OPENAI_COMPAT_BASE_URL = os.getenv("OPENAI_COMPAT_BASE_URL", "").rstrip("/")
 OPENAI_COMPAT_PATH = os.getenv("OPENAI_COMPAT_PATH", "/chat/completions").strip() or "/chat/completions"
 OPENAI_COMPAT_MODEL = os.getenv("OPENAI_COMPAT_MODEL", "").strip()
 OPENAI_COMPAT_API_KEY = os.getenv("OPENAI_COMPAT_API_KEY", "").strip()
+BEDROCK_BASE_URL = os.getenv("BEDROCK_BASE_URL", "").rstrip("/")
+BEDROCK_REGION = os.getenv("BEDROCK_REGION", "").strip()
+BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "").strip()
+BEDROCK_API_KEY = os.getenv("BEDROCK_API_KEY", os.getenv("AWS_BEARER_TOKEN_BEDROCK", "")).strip()
 CHATGPT_BRIDGE_BASE_URL = os.getenv("CHATGPT_BRIDGE_BASE_URL", os.getenv("CHATGPT_BRIDGE_URL", "")).rstrip("/")
 CHATGPT_BRIDGE_PATH = os.getenv("CHATGPT_BRIDGE_PATH", "/chat/completions").strip() or "/chat/completions"
 CHATGPT_BRIDGE_MODEL = os.getenv("CHATGPT_BRIDGE_MODEL", "").strip()
@@ -66,6 +79,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 OLLAMA_TIMEOUT = _env_int("OLLAMA_TIMEOUT", 120)
+BEDROCK_TIMEOUT = _env_int("BEDROCK_TIMEOUT", 120)
 CHATGPT_BRIDGE_TIMEOUT = _env_int("CHATGPT_BRIDGE_TIMEOUT", 120)
 SEARCH_RESULTS = _env_int("SEARCH_RESULTS", 50)
 SOURCE_RETRY_LIMIT = _env_int("SOURCE_RETRY_LIMIT", 10)
@@ -77,6 +91,9 @@ MODEL_INPUT_MAX_CHARS = _env_int("MODEL_INPUT_MAX_CHARS", 24000)
 MODEL_OUTPUT_TOKENS = _env_int("MODEL_OUTPUT_TOKENS", 3500)
 MAX_QUEUE_TAGS = _env_int("MAX_QUEUE_TAGS", 25)
 SEARCH_ENGINE = os.getenv("SEARCH_ENGINE", "duckduckgo").strip().lower()
+WEB_USE_ENV_PROXY = os.getenv("WEB_USE_ENV_PROXY", "false").strip().lower() in {"1", "true", "yes", "on"}
+OUTBOUND_USE_ENV_PROXY = os.getenv("OUTBOUND_USE_ENV_PROXY", os.getenv("WEB_USE_ENV_PROXY", "false")).strip().lower() in {"1", "true", "yes", "on"}
+SEARCH_PROVIDER_COOLDOWN_SEC = _env_int("SEARCH_PROVIDER_COOLDOWN_SEC", 600)
 USER_AGENT = os.getenv(
     "USER_AGENT",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -196,16 +213,65 @@ DEBATE_CARD_GUIDANCE = {
 }
 
 
+LOGGER = logging.getLogger("debate_card_cutter")
+if not LOGGER.handlers:
+    LOGGER.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=1_500_000, backupCount=5, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    stream_handler = logging.StreamHandler(sys.stderr)
+    stream_handler.setFormatter(formatter)
+    LOGGER.addHandler(file_handler)
+    LOGGER.addHandler(stream_handler)
+    LOGGER.propagate = False
+
+
+class ResearchError(RuntimeError):
+    pass
+
+
+SEARCH_PROVIDER_DISABLED_UNTIL: dict[str, float] = {}
+
+
 def _json_response(handler: SimpleHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
     body = json.dumps(payload, ensure_ascii=True, indent=2).encode("utf-8")
-    handler.send_response(status)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Access-Control-Allow-Origin", "*")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    handler.end_headers()
-    handler.wfile.write(body)
+    try:
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json; charset=utf-8")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.send_header("Access-Control-Allow-Origin", "*")
+        handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        handler.end_headers()
+        handler.wfile.write(body)
+    except (BrokenPipeError, ConnectionResetError):
+        _log_event(logging.WARNING, "response_write_failed", status=status, payload_keys=list(payload.keys()))
+
+
+def _request_id(payload: dict[str, Any] | None = None) -> str:
+    if isinstance(payload, dict):
+        value = _clean_text(payload.get("_request_id"))
+        if value:
+            return value
+    return "-"
+
+
+def _log_event(level: int, event: str, **fields: Any) -> None:
+    cleaned: dict[str, Any] = {"event": event}
+    for key, value in fields.items():
+        if value is None:
+            continue
+        if isinstance(value, Path):
+            cleaned[key] = str(value)
+        elif isinstance(value, (str, int, float, bool)):
+            cleaned[key] = value
+        elif isinstance(value, dict):
+            cleaned[key] = {str(k): v for k, v in value.items()}
+        elif isinstance(value, list):
+            cleaned[key] = value
+        else:
+            cleaned[key] = str(value)
+    LOGGER.log(level, json.dumps(cleaned, ensure_ascii=True))
 
 
 def _binary_response(
@@ -216,15 +282,18 @@ def _binary_response(
     content_type: str,
     filename: str,
 ) -> None:
-    handler.send_response(status)
-    handler.send_header("Content-Type", content_type)
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-    handler.send_header("Access-Control-Allow-Origin", "*")
-    handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    handler.end_headers()
-    handler.wfile.write(body)
+    try:
+        handler.send_response(status)
+        handler.send_header("Content-Type", content_type)
+        handler.send_header("Content-Length", str(len(body)))
+        handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        handler.send_header("Access-Control-Allow-Origin", "*")
+        handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        handler.end_headers()
+        handler.wfile.write(body)
+    except (BrokenPipeError, ConnectionResetError):
+        _log_event(logging.WARNING, "binary_response_write_failed", status=status, filename=filename)
 
 
 def _read_json_body(handler: SimpleHTTPRequestHandler) -> dict[str, Any]:
@@ -636,10 +705,36 @@ def _resolve_chatgpt_bridge_url() -> str:
     return f"{base_url.rstrip('/')}/{CHATGPT_BRIDGE_PATH.lstrip('/')}"
 
 
+def _bedrock_api_key() -> str:
+    return BEDROCK_API_KEY or os.getenv("AWS_BEARER_TOKEN_BEDROCK", "").strip()
+
+
+def _bedrock_configured() -> bool:
+    return bool((BEDROCK_BASE_URL or BEDROCK_REGION) and BEDROCK_MODEL and _bedrock_api_key())
+
+
+def _resolve_bedrock_url(model: str = "") -> str:
+    model_id = _clean_text(model or BEDROCK_MODEL)
+    if not model_id:
+        return ""
+    base_url = BEDROCK_BASE_URL.rstrip("/")
+    if not base_url:
+        region = _clean_text(BEDROCK_REGION)
+        if not region:
+            return ""
+        base_url = f"https://bedrock-runtime.{region}.amazonaws.com"
+    parsed = urlparse(base_url)
+    if parsed.path.endswith("/converse"):
+        return base_url
+    return f"{base_url}/model/{quote_plus(model_id).replace('+', '%20')}/converse"
+
+
 def _normalize_provider(value: Any) -> str:
     provider = _clean_text(value).lower()
     if provider in {"ollama", "local", "local_model", "local-model"}:
         return "ollama"
+    if provider in {"bedrock", "aws_bedrock", "aws-bedrock", "bedrock_converse", "aws"}:
+        return "bedrock"
     if provider in {"chatgpt_bridge", "chatgpt_subscription", "chatgpt_proxy", "chatgpt-web", "chatgpt_web"}:
         return "chatgpt_bridge"
     if provider in {"openai_compat", "compat", "remote", "remote_model", "remote-model", "nvidia"}:
@@ -658,7 +753,7 @@ def _validate_requested_provider(payload: dict[str, Any]) -> str:
     provider = _normalize_provider(requested)
     if provider:
         return provider
-    raise ValueError("Unsupported provider. Use ollama, chatgpt_bridge, openai_compat, openai, or fallback.")
+    raise ValueError("Unsupported provider. Use bedrock, ollama, chatgpt_bridge, openai_compat, openai, or fallback.")
 
 
 def _provider_preference(payload: dict[str, Any]) -> list[str]:
@@ -666,10 +761,15 @@ def _provider_preference(payload: dict[str, Any]) -> list[str]:
     if configured_provider:
         return [configured_provider, "fallback"]
 
+    pinned_provider = _normalize_provider(os.getenv("LOCAL_MODEL_PROVIDER", ""))
     if OLLAMA_MODEL:
-        return ["ollama", "chatgpt_bridge", "openai_compat", "openai", "fallback"]
-    if os.getenv("LOCAL_MODEL_PROVIDER", "").strip().lower() == "ollama":
-        return ["ollama", "chatgpt_bridge", "openai_compat", "openai", "fallback"]
+        return ["ollama", "bedrock", "chatgpt_bridge", "openai_compat", "openai", "fallback"]
+    if pinned_provider == "ollama":
+        return ["ollama", "bedrock", "chatgpt_bridge", "openai_compat", "openai", "fallback"]
+    if pinned_provider == "bedrock":
+        return ["bedrock", "openai_compat", "openai", "fallback"]
+    if _bedrock_configured():
+        return ["bedrock", "openai_compat", "openai", "fallback"]
     if CHATGPT_BRIDGE_BASE_URL and CHATGPT_BRIDGE_MODEL:
         return ["chatgpt_bridge", "openai_compat", "openai", "fallback"]
     if OPENAI_COMPAT_BASE_URL and OPENAI_COMPAT_MODEL:
@@ -1129,6 +1229,24 @@ def _parse_html_text(html_text: str) -> dict[str, Any]:
     }
 
 
+def _build_http_opener(*, use_env_proxy: bool = OUTBOUND_USE_ENV_PROXY) -> urllib.request.OpenerDirector:
+    context = ssl.create_default_context()
+    handlers: list[Any] = [urllib.request.HTTPSHandler(context=context)]
+    if not use_env_proxy:
+        handlers.insert(0, urllib.request.ProxyHandler({}))
+    return urllib.request.build_opener(*handlers)
+
+
+def _open_http_request(
+    request: urllib.request.Request,
+    *,
+    timeout: int,
+    use_env_proxy: bool = OUTBOUND_USE_ENV_PROXY,
+):
+    opener = _build_http_opener(use_env_proxy=use_env_proxy)
+    return opener.open(request, timeout=timeout)
+
+
 def _fetch_url_bytes(url: str, timeout: int, max_bytes: int) -> tuple[bytes, str, str, str]:
     request = urllib.request.Request(
         url,
@@ -1138,8 +1256,7 @@ def _fetch_url_bytes(url: str, timeout: int, max_bytes: int) -> tuple[bytes, str
             "Accept-Encoding": "identity",
         },
     )
-    context = ssl.create_default_context()
-    with urllib.request.urlopen(request, context=context, timeout=timeout) as resp:
+    with _open_http_request(request, timeout=timeout, use_env_proxy=WEB_USE_ENV_PROXY) as resp:
         body = resp.read(max_bytes + 1)
         content_type = resp.headers.get_content_type() or ""
         charset = resp.headers.get_content_charset() or "utf-8"
@@ -1165,34 +1282,71 @@ def _decode_duckduckgo_redirect(url: str) -> str:
 def _search_duckduckgo(query: str, limit: int) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
-    pattern = re.compile(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.I | re.S)
+    patterns = [
+        re.compile(r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.I | re.S),
+        re.compile(r'<a[^>]*href="([^"]*duckduckgo\.com/l/\?[^"]*uddg=[^"]+)"[^>]*>(.*?)</a>', re.I | re.S),
+        re.compile(r'<a[^>]*rel="nofollow"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.I | re.S),
+    ]
     for offset in range(0, max(limit, 1), 30):
         search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}&s={offset}"
         body, _, charset, _ = _fetch_url_bytes(search_url, SEARCH_TIMEOUT, 500000)
         html_text = body.decode(charset, errors="replace")
         page_added = 0
-        for href, title_html in pattern.findall(html_text):
-            url = _normalize_web_url(_decode_duckduckgo_redirect(href))
-            if not url or url in seen:
-                continue
-            seen.add(url)
-            results.append(
-                {
-                    "engine": "duckduckgo",
-                    "title": _strip_html(title_html),
-                    "url": url,
-                    "query": query,
-                }
-            )
-            page_added += 1
-            if len(results) >= limit:
-                return results
+        for pattern in patterns:
+            for href, title_html in pattern.findall(html_text):
+                url = _normalize_web_url(_decode_duckduckgo_redirect(href))
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+                results.append(
+                    {
+                        "engine": "duckduckgo",
+                        "title": _strip_html(title_html),
+                        "url": url,
+                        "query": query,
+                    }
+                )
+                page_added += 1
+                if len(results) >= limit:
+                    return results
         if page_added == 0:
             break
     return results
 
 
+def _search_bing_rss(query: str, limit: int) -> list[dict[str, Any]]:
+    search_url = f"https://www.bing.com/search?format=rss&q={quote_plus(query)}"
+    body, _, charset, _ = _fetch_url_bytes(search_url, SEARCH_TIMEOUT, 500000)
+    xml_text = body.decode(charset, errors="replace")
+    root = ET.fromstring(xml_text)
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in root.findall(".//item"):
+        title = _clean_text(item.findtext("title"))
+        url = _normalize_web_url(_clean_text(item.findtext("link")))
+        if not title or not url or url in seen:
+            continue
+        seen.add(url)
+        results.append(
+            {
+                "engine": "bing_rss",
+                "title": title,
+                "url": url,
+                "query": query,
+            }
+        )
+        if len(results) >= limit:
+            break
+    return results
+
+
 def _search_bing(query: str, limit: int) -> list[dict[str, Any]]:
+    try:
+        rss_results = _search_bing_rss(query, limit)
+        if rss_results:
+            return rss_results
+    except Exception:
+        pass
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
     pattern = re.compile(r'<li[^>]*class="[^"]*\bb_algo\b[^"]*"[^>]*>.*?<h2><a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.I | re.S)
@@ -1235,14 +1389,29 @@ def _search_web(query: str, limit: int) -> list[dict[str, Any]]:
 
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
+    now = time.monotonic()
     for provider in providers:
+        disabled_until = SEARCH_PROVIDER_DISABLED_UNTIL.get(provider, 0.0)
+        if disabled_until > now:
+            _log_event(
+                logging.INFO,
+                "search_provider_skipped",
+                provider=provider,
+                query=query,
+                disabled_for_seconds=round(disabled_until - now, 2),
+            )
+            continue
         try:
             if provider == "bing":
                 provider_results = _search_bing(query, limit)
             else:
                 provider_results = _search_duckduckgo(query, limit)
-        except Exception:
+        except Exception as exc:
+            SEARCH_PROVIDER_DISABLED_UNTIL[provider] = time.monotonic() + SEARCH_PROVIDER_COOLDOWN_SEC
+            _log_event(logging.WARNING, "search_provider_failed", provider=provider, query=query, error=str(exc))
             continue
+        SEARCH_PROVIDER_DISABLED_UNTIL.pop(provider, None)
+        _log_event(logging.INFO, "search_provider_results", provider=provider, query=query, result_count=len(provider_results))
         for item in provider_results:
             url = item.get("url", "")
             if not url or url in seen:
@@ -1614,6 +1783,9 @@ def _search_web_domains(query: str, limit: int, domains: list[str]) -> list[dict
         filtered_query = _build_query_phrase(f"site:{domain}", query)
         for item in _search_web(filtered_query, min(limit, 6)):
             url = _clean_text(item.get("url"))
+            host = _hostname(url)
+            if not host or (host != domain and not host.endswith(f".{domain}")):
+                continue
             if not url or url in seen:
                 continue
             seen.add(url)
@@ -1887,6 +2059,7 @@ def _select_mixed_candidate_pool(candidates: list[dict[str, Any]]) -> list[dict[
 
 
 def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
+    request_id = _request_id(payload)
     article_text = _clean_text(payload.get("article_text"))
     source_url = _normalize_web_url(_clean_text(payload.get("source_url")))
     draft_tag = _clean_text(payload.get("draft_tag"))
@@ -1899,6 +2072,26 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
     executed_queries: list[dict[str, Any]] = []
     intent_phrase = _clean_text(query_pack.get("intent_claim")) or draft_tag or query
     query_terms = _score_terms(" ".join([intent_phrase, " ".join(_coerce_string_list(query_pack.get("must_have_terms")))]))
+    _log_event(
+        logging.INFO,
+        "research_start",
+        request_id=request_id,
+        search_mode=search_mode,
+        semantic_enabled=semantic_enabled,
+        draft_tag=draft_tag,
+        source_url=source_url,
+        has_article_text=bool(article_text),
+        blocked_domains=blocked_domains,
+    )
+    _log_event(
+        logging.INFO,
+        "research_query_pack",
+        request_id=request_id,
+        query=query,
+        query_refinement_used=query_refinement_used,
+        query_refinement_provider=query_refinement_provider,
+        intent_claim=intent_phrase,
+    )
 
     if source_url and _domain_is_blocked(source_url, blocked_domains):
         raise ValueError(f"source_url is blocked by the current domain blacklist: {source_url}")
@@ -1971,6 +2164,15 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
         discovered_search, executed_queries = _collect_discovered_sources(query_pack, semantic_enabled)
         for bucket_name, items in discovered_search.items():
             discovered_by_bucket[bucket_name].extend(items)
+        _log_event(
+            logging.INFO,
+            "research_discovered",
+            request_id=request_id,
+            academic=len(discovered_by_bucket["academic"]),
+            think_tank=len(discovered_by_bucket["think_tank"]),
+            general_web=len(discovered_by_bucket["general_web"]),
+            executed_queries=executed_queries,
+        )
     elif source_url:
         pass
     else:
@@ -1982,6 +2184,13 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
             if _domain_is_blocked(item.get("url", ""), blocked_domains):
                 continue
             discovered.append({**item, "discovered_bucket": bucket_name})
+    _log_event(
+        logging.INFO,
+        "research_filtered_discovered",
+        request_id=request_id,
+        discovered=len(discovered),
+        blocked_domains=blocked_domains,
+    )
 
     fetched: list[dict[str, Any]] = list(prefetched_candidates)
     seen_urls: set[str] = set()
@@ -2026,20 +2235,47 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
         fetched.append(item)
 
     if not fetched:
-        raise RuntimeError("No fetchable sources found")
+        _log_event(
+            logging.WARNING,
+            "research_no_fetchable_sources",
+            request_id=request_id,
+            discovered=len(discovered),
+            query=query,
+            search_mode=search_mode,
+        )
+        raise ResearchError("No fetchable sources found")
 
     phrase = intent_phrase.lower()
     for item in fetched:
         item.update(_candidate_metrics(item, query_terms, phrase))
     mixed_pool = _select_mixed_candidate_pool(fetched)
     if not mixed_pool:
-        raise RuntimeError("No usable candidate sources found after filtering")
+        _log_event(
+            logging.WARNING,
+            "research_no_usable_candidates",
+            request_id=request_id,
+            fetched=len(fetched),
+            query=query,
+            search_mode=search_mode,
+        )
+        raise ResearchError("No usable candidate sources found after filtering")
     selected = mixed_pool[0]
     selected_text = _clean_text(selected.get("text"))
     if not selected_text and selected.get("description"):
         selected_text = _clean_text(selected.get("description"))
     if not selected_text and intent_phrase:
         selected_text = intent_phrase
+    _log_event(
+        logging.INFO,
+        "research_complete",
+        request_id=request_id,
+        fetched=len(fetched),
+        mixed_pool=len(mixed_pool),
+        selected_source_id=selected.get("source_id"),
+        selected_title=_clean_text(selected.get("title")),
+        selected_url=_clean_text(selected.get("url")),
+        selected_bucket=_clean_text(selected.get("pool_bucket")),
+    )
 
     return {
         "used": True,
@@ -2708,8 +2944,7 @@ def _call_chat_completion_json(
         headers["Authorization"] = f"Bearer {api_key}"
 
     req = urllib.request.Request(url, data=data, method="POST", headers=headers)
-    context = ssl.create_default_context()
-    with urllib.request.urlopen(req, context=context, timeout=timeout) as resp:
+    with _open_http_request(req, timeout=timeout) as resp:
         response_json = json.loads(resp.read().decode("utf-8"))
 
     choices = response_json.get("choices") if isinstance(response_json, dict) else None
@@ -2744,10 +2979,73 @@ def _call_openai_json_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
             "Accept": "application/json",
         },
     )
-    context = ssl.create_default_context()
-    with urllib.request.urlopen(req, context=context, timeout=60) as resp:
+    with _open_http_request(req, timeout=60) as resp:
         response_json = json.loads(resp.read().decode("utf-8"))
     return _parse_json_text(_extract_text_from_response(response_json))
+
+
+def _extract_bedrock_text(response_json: dict[str, Any]) -> str:
+    output = response_json.get("output") if isinstance(response_json.get("output"), dict) else {}
+    message = output.get("message") if isinstance(output.get("message"), dict) else {}
+    content = message.get("content")
+    parts: list[str] = []
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict):
+                text = _clean_text(block.get("text"))
+                if text:
+                    parts.append(text)
+    return "\n".join(parts).strip()
+
+
+def _call_bedrock_converse_request(*, system_text: str, user_text: str, timeout: int) -> dict[str, Any]:
+    url = _resolve_bedrock_url()
+    model = BEDROCK_MODEL
+    api_key = _bedrock_api_key()
+    if not url or not model:
+        raise RuntimeError("BEDROCK_REGION or BEDROCK_BASE_URL and BEDROCK_MODEL must be set")
+    if not api_key:
+        raise RuntimeError("BEDROCK_API_KEY or AWS_BEARER_TOKEN_BEDROCK must be set")
+
+    request_body = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"text": user_text}],
+            }
+        ],
+        "system": [{"text": system_text}],
+        "inferenceConfig": {
+            "temperature": 0.2,
+            "maxTokens": MODEL_OUTPUT_TOKENS,
+        },
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(request_body).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with _open_http_request(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Bedrock request failed ({exc.code}): {error_body}") from exc
+
+
+def _call_bedrock_json_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
+    response_json = _call_bedrock_converse_request(
+        system_text="Return strict JSON only.",
+        user_text=json.dumps(prompt, ensure_ascii=True),
+        timeout=BEDROCK_TIMEOUT,
+    )
+    text = _extract_bedrock_text(response_json)
+    return _parse_json_text(text)
 
 
 def _call_ollama_json_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
@@ -2781,8 +3079,7 @@ def _call_ollama_json_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
             "Accept": "application/json",
         },
     )
-    context = ssl.create_default_context()
-    with urllib.request.urlopen(req, context=context, timeout=OLLAMA_TIMEOUT) as resp:
+    with _open_http_request(req, timeout=OLLAMA_TIMEOUT) as resp:
         response_json = json.loads(resp.read().decode("utf-8"))
     message = response_json.get("message") if isinstance(response_json, dict) else None
     text = _text_from_value(message.get("content") if isinstance(message, dict) else response_json.get("response"))
@@ -2790,6 +3087,8 @@ def _call_ollama_json_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
 
 
 def _call_provider_json(provider: str, prompt: dict[str, Any]) -> dict[str, Any]:
+    if provider == "bedrock":
+        return _call_bedrock_json_prompt(prompt)
     if provider == "ollama":
         return _call_ollama_json_prompt(prompt)
     if provider == "chatgpt_bridge":
@@ -2878,6 +3177,8 @@ def _call_provider_stage(
     stage: str = "cut",
     candidate_card: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if provider == "bedrock":
+        return _call_bedrock(payload, stage=stage, candidate_card=candidate_card)
     if provider == "ollama":
         return _call_ollama(payload, stage=stage, candidate_card=candidate_card)
     if provider == "chatgpt_bridge":
@@ -2933,8 +3234,7 @@ def _call_chat_completion_provider(
         headers=headers,
     )
 
-    context = ssl.create_default_context()
-    with urllib.request.urlopen(req, context=context, timeout=timeout) as resp:
+    with _open_http_request(req, timeout=timeout) as resp:
         response_json = json.loads(resp.read().decode("utf-8"))
 
     choices = response_json.get("choices") if isinstance(response_json, dict) else None
@@ -2983,8 +3283,7 @@ def _call_openai(payload: dict[str, Any], *, stage: str = "cut", candidate_card:
         },
     )
 
-    context = ssl.create_default_context()
-    with urllib.request.urlopen(req, context=context, timeout=60) as resp:
+    with _open_http_request(req, timeout=60) as resp:
         response_json = json.loads(resp.read().decode("utf-8"))
 
     text = _extract_text_from_response(response_json)
@@ -3038,8 +3337,7 @@ def _call_ollama(payload: dict[str, Any], *, stage: str = "cut", candidate_card:
         },
     )
 
-    context = ssl.create_default_context()
-    with urllib.request.urlopen(req, context=context, timeout=OLLAMA_TIMEOUT) as resp:
+    with _open_http_request(req, timeout=OLLAMA_TIMEOUT) as resp:
         response_json = json.loads(resp.read().decode("utf-8"))
 
     text = ""
@@ -3059,6 +3357,29 @@ def _call_ollama(payload: dict[str, Any], *, stage: str = "cut", candidate_card:
             "mode": "ai",
             "provider": "ollama",
             "model": model,
+            "stage": stage,
+        },
+    }
+
+
+def _call_bedrock(payload: dict[str, Any], *, stage: str = "cut", candidate_card: dict[str, Any] | None = None) -> dict[str, Any]:
+    prompt = _build_prompt(payload, stage=stage, candidate_card=candidate_card)
+    response_json = _call_bedrock_converse_request(
+        system_text="You cut and validate debate cards. Return strict JSON only, matching the schema provided by the user.",
+        user_text=json.dumps(prompt, ensure_ascii=True),
+        timeout=BEDROCK_TIMEOUT,
+    )
+    text = _extract_bedrock_text(response_json)
+    parsed = _parse_json_text(text)
+    normalized_cards = _normalize_model_cards(parsed.get("cards"), 1)
+    return {
+        "cards": normalized_cards,
+        "validation": _extract_validation_meta(parsed),
+        "meta": {
+            "used_ai": True,
+            "mode": "ai",
+            "provider": "bedrock",
+            "model": BEDROCK_MODEL,
             "stage": stage,
         },
     }
@@ -3106,6 +3427,7 @@ def _call_chatgpt_bridge(
 
 
 def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
+    request_id = _request_id(payload)
     research_error = ""
     supplied_research = payload.get("research_meta") if isinstance(payload.get("research_meta"), dict) else {}
     if supplied_research:
@@ -3170,6 +3492,7 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
         if provider == "fallback":
             break
         try:
+            _log_event(logging.INFO, "cut_provider_start", request_id=request_id, provider=provider, candidate_pool=len(candidate_pool))
             ordered_candidates = candidate_pool
             selection_meta = {
                 "used_ai_selection": False,
@@ -3180,8 +3503,17 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
             if ordered_candidates:
                 try:
                     ordered_candidates, selection_meta = _select_source_order_with_ai(provider, payload, ordered_candidates[:SEARCH_RESULTS])
+                    _log_event(
+                        logging.INFO,
+                        "cut_source_selection",
+                        request_id=request_id,
+                        provider=provider,
+                        selected_indices=selection_meta.get("selected_indices"),
+                        used_ai_selection=selection_meta.get("used_ai_selection"),
+                    )
                 except Exception as selection_exc:
                     selection_errors.append(f"{provider} source_select: {selection_exc}")
+                    _log_event(logging.WARNING, "cut_source_selection_failed", request_id=request_id, provider=provider, error=str(selection_exc))
 
             attempts = ordered_candidates[: max(1, min(SOURCE_RETRY_LIMIT, len(ordered_candidates)))] if ordered_candidates else []
             if not attempts:
@@ -3215,6 +3547,16 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                     "current_attempt_index": attempt_index,
                     "current_source_id": _clean_text(candidate.get("source_id") or f"S{attempt_index}"),
                 }
+                _log_event(
+                    logging.INFO,
+                    "cut_attempt_start",
+                    request_id=request_id,
+                    provider=provider,
+                    attempt_index=attempt_index,
+                    source_id=attempt_payload["source_id"],
+                    source_title=attempt_payload["source_title"],
+                    source_url=attempt_payload["source_url"],
+                )
 
                 cut_result = _call_provider_stage(provider, attempt_payload, stage="cut")
                 final_card = cut_result["cards"][0]
@@ -3251,6 +3593,7 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                         validation_meta.setdefault("passed", True)
                 except Exception as validation_exc:
                     validation_errors.append(f"{provider} validate: {validation_exc}")
+                    _log_event(logging.WARNING, "cut_validation_failed", request_id=request_id, provider=provider, attempt_index=attempt_index, error=str(validation_exc))
                     validation_meta = _default_validation_meta(
                         notes=f"Validation pass failed: {validation_exc}",
                         revised=False,
@@ -3265,6 +3608,7 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                 if _validation_is_weak(validation_meta):
                     note = _clean_text(validation_meta.get("notes")) or "Validation marked the card as not useful."
                     attempt_errors.append(f"{provider} source_attempt_{attempt_index}: {note}")
+                    _log_event(logging.INFO, "cut_attempt_rejected", request_id=request_id, provider=provider, attempt_index=attempt_index, reason=note)
                     continue
 
                 result = {
@@ -3302,11 +3646,13 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                 provider_errors = [*errors, *selection_errors, *attempt_errors, *validation_errors]
                 if provider_errors:
                     result["meta"]["provider_errors"] = provider_errors
+                _log_event(logging.INFO, "cut_complete", request_id=request_id, provider=provider, attempt_index=attempt_index, source_id=_clean_text(candidate.get("source_id") or f"S{attempt_index}"))
                 return {"ok": True, **result}
 
             errors.extend([*selection_errors, *attempt_errors])
         except Exception as exc:
             errors.append(f"{provider}: {exc}")
+            _log_event(logging.WARNING, "cut_provider_failed", request_id=request_id, provider=provider, error=str(exc))
             continue
 
     cards = _build_fallback_cards(payload)
@@ -3686,19 +4032,41 @@ class DebateCardHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
+        request_id = uuid4().hex[:10]
         try:
             payload = _normalize_payload(_read_json_body(self))
+            payload["_request_id"] = request_id
+            _log_event(
+                logging.INFO,
+                "request_start",
+                request_id=request_id,
+                path=self.path,
+                draft_tag=_clean_text(payload.get("draft_tag")),
+                has_article_text=bool(_clean_text(payload.get("article_text"))),
+                source_url=_clean_text(payload.get("source_url")),
+                semantic_search_enabled=_parse_bool(payload.get("semantic_search_enabled"), SEMANTIC_SEARCH_DEFAULT),
+            )
             if self.path == "/api/research":
                 research = dict(_research_sources(payload))
                 research.pop("_candidates", None)
-                _json_response(self, HTTPStatus.OK, {"ok": True, "research": research})
+                _log_event(
+                    logging.INFO,
+                    "request_success",
+                    request_id=request_id,
+                    path=self.path,
+                    selected_title=_clean_text((research.get("selected") or {}).get("title")) if isinstance(research.get("selected"), dict) else "",
+                    source_count=len(to_array(research.get("sources"))),
+                )
+                _json_response(self, HTTPStatus.OK, {"ok": True, "request_id": request_id, "research": research})
                 return
             if self.path == "/api/queue":
                 result = _queue_cut_cards(payload)
-                _json_response(self, HTTPStatus.OK, result)
+                _log_event(logging.INFO, "request_success", request_id=request_id, path=self.path)
+                _json_response(self, HTTPStatus.OK, {"request_id": request_id, **result})
                 return
             if self.path == "/api/export/docx":
                 body, filename = _export_docx(payload)
+                _log_event(logging.INFO, "request_success", request_id=request_id, path=self.path, filename=filename)
                 _binary_response(
                     self,
                     HTTPStatus.OK,
@@ -3713,13 +4081,20 @@ class DebateCardHandler(SimpleHTTPRequestHandler):
             if not _clean_text(payload.get("article_text")) and not _clean_text(payload.get("draft_tag")) and not _clean_text(payload.get("source_url")):
                 raise ValueError("article_text, draft_tag, or source_url is required")
             result = _cut_cards(payload)
-            _json_response(self, HTTPStatus.OK, result)
+            _log_event(logging.INFO, "request_success", request_id=request_id, path=self.path, card_count=len(to_array(result.get("cards"))))
+            _json_response(self, HTTPStatus.OK, {"request_id": request_id, **result})
         except json.JSONDecodeError:
-            _json_response(self, HTTPStatus.BAD_REQUEST, {"ok": False, "error": "Invalid JSON"})
+            _log_event(logging.WARNING, "request_error", request_id=request_id, path=self.path, error="Invalid JSON")
+            _json_response(self, HTTPStatus.BAD_REQUEST, {"ok": False, "request_id": request_id, "error": "Invalid JSON"})
         except ValueError as exc:
-            _json_response(self, HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)})
+            _log_event(logging.WARNING, "request_error", request_id=request_id, path=self.path, error=str(exc))
+            _json_response(self, HTTPStatus.BAD_REQUEST, {"ok": False, "request_id": request_id, "error": str(exc)})
+        except ResearchError as exc:
+            _log_event(logging.WARNING, "research_error", request_id=request_id, path=self.path, error=str(exc))
+            _json_response(self, HTTPStatus.BAD_GATEWAY, {"ok": False, "request_id": request_id, "error": str(exc)})
         except Exception as exc:
-            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "error": str(exc)})
+            LOGGER.exception("request_failed request_id=%s path=%s", request_id, self.path)
+            _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "request_id": request_id, "error": str(exc)})
 
     def log_message(self, format: str, *args: Any) -> None:
         sys.stderr.write("%s - - [%s] %s\n" % (self.address_string(), self.log_date_time_string(), format % args))

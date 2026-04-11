@@ -115,6 +115,17 @@ function normalizeText(value) {
   return String(value ?? '').trim();
 }
 
+function describeApiError(data, status, fallbackLabel = 'Request failed') {
+  const requestId = normalizeText(data?.request_id ?? data?.requestId);
+  const message = typeof data === 'string'
+    ? data
+    : data?.error?.message
+      ?? data?.error
+      ?? data?.message
+      ?? `${fallbackLabel} with status ${status}.`;
+  return requestId ? `${message} [request ${requestId}]` : message;
+}
+
 function formatScore(value, digits = 3) {
   const numeric = typeof value === 'number' ? value : Number.parseFloat(normalizeText(value));
   return Number.isFinite(numeric) ? numeric.toFixed(digits) : '';
@@ -1233,11 +1244,7 @@ async function researchFromTag() {
     }
 
     if (!response.ok) {
-      const message = typeof data === 'string'
-        ? data
-        : data?.error?.message
-          ?? data?.message
-          ?? `Request failed with status ${response.status}.`;
+      const message = describeApiError(data, response.status);
       throw new Error(message);
     }
 
@@ -1712,11 +1719,7 @@ async function runQueuedCuts() {
         }
 
         if (!researchResponse.ok) {
-          const researchMessage = typeof researchData === 'string'
-            ? researchData
-            : researchData?.error?.message
-              ?? researchData?.message
-              ?? `Research failed with status ${researchResponse.status}.`;
+          const researchMessage = describeApiError(researchData, researchResponse.status, 'Research failed');
           throw new Error(researchMessage);
         }
 
@@ -1752,11 +1755,7 @@ async function runQueuedCuts() {
         }
 
         if (!response.ok) {
-          const message = typeof data === 'string'
-            ? data
-            : data?.error?.message
-              ?? data?.message
-              ?? `Request failed with status ${response.status}.`;
+          const message = describeApiError(data, response.status);
           throw new Error(message);
         }
 
@@ -1886,11 +1885,7 @@ form.addEventListener('submit', async (event) => {
     }
 
     if (!response.ok) {
-      const message = typeof data === 'string'
-        ? data
-        : data?.error?.message
-          ?? data?.message
-          ?? `Request failed with status ${response.status}.`;
+      const message = describeApiError(data, response.status);
       throw new Error(message);
     }
 

@@ -368,6 +368,26 @@ Notes:
 - The provider name is generic on purpose so you are not locked to one vendor.
 - `nvidia` and `openai_compat` are both supported provider labels for this path.
 
+### Amazon Bedrock provider
+
+Use this when you want a native Bedrock model path instead of an OpenAI-compatible proxy.
+
+```dotenv
+BEDROCK_MODEL=meta.llama4-scout-17b-instruct-v1:0
+BEDROCK_REGION=us-west-2
+BEDROCK_API_KEY=your-bedrock-key-if-needed
+AWS_BEARER_TOKEN_BEDROCK=your-bearer-token-if-needed
+BEDROCK_BASE_URL=
+```
+
+Notes:
+
+- The provider label is `bedrock`.
+- Bedrock uses the Converse API path, not OpenAI-compatible chat completions.
+- `BEDROCK_BASE_URL` is optional and only needed if you are pointing at a custom Bedrock-compatible gateway.
+- Use the concrete model id that is available in your AWS region/account. A common Meta Llama 4 Scout 17B Instruct id is `meta.llama4-scout-17b-instruct-v1:0`.
+- `BEDROCK_API_KEY` or `AWS_BEARER_TOKEN_BEDROCK` can be used depending on how your Bedrock access is configured.
+
 ### Optional OpenAI fallback
 
 If you want a paid fallback path:
@@ -386,8 +406,9 @@ The backend tries providers in this order unless you override it per request:
 
 1. Ollama
 2. OpenAI-compatible endpoint
-3. OpenAI API
-4. deterministic fallback cutter
+3. Bedrock
+4. OpenAI API
+5. deterministic fallback cutter
 
 ### Force a provider per request
 
@@ -404,6 +425,7 @@ Supported provider values:
 - `chatgpt_bridge`
 - `chatgpt_subscription`
 - `openai_compat`
+- `bedrock`
 - `remote`
 - `nvidia`
 - `openai`
