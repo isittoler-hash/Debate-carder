@@ -33,7 +33,7 @@
         <div class="workflow-step">
           <span class="workflow-step-index">3</span>
           <strong>Cut</strong>
-          <p>Return one formatted card with cite line, read text, and context.</p>
+          <p>Return one formatted card with cite line, underlined support, highlighted passages, and context.</p>
         </div>
         <div class="workflow-step">
           <span class="workflow-step-index">4</span>
@@ -119,6 +119,12 @@
           <input id="source-url" name="sourceUrl" type="url" placeholder="https://...">
         </label>
 
+        <label class="field">
+          <span>Blocked domains</span>
+          <textarea id="blocked-domains" name="blockedDomains" rows="3" placeholder="example.com&#10;badsource.net&#10;subdomain.site.org"></textarea>
+          <small>One domain per line or comma-separated. Matching domains will be excluded from research and source selection.</small>
+        </label>
+
         <div class="grid grid-two">
           <div class="field field-static">
             <span>Card mode</span>
@@ -139,6 +145,25 @@
           <button id="research-btn" class="secondary" type="button">Research from tag</button>
         </div>
 
+        <div class="grid grid-two research-grid">
+          <div class="field field-static">
+            <span>Search mode</span>
+            <strong>Semantic search default</strong>
+            <small>Semantic mode expands the draft tag by meaning before search. Literal mode keeps the exact wording.</small>
+            <div class="search-mode-toggle" role="group" aria-label="Search mode">
+              <button id="search-mode-semantic" class="mode-button is-active" type="button" aria-pressed="true">Semantic search</button>
+              <button id="search-mode-literal" class="mode-button" type="button" aria-pressed="false">Literal search</button>
+            </div>
+          </div>
+
+          <div class="field field-static">
+            <span>Query preview</span>
+            <strong>Read-only search pack</strong>
+            <small>The backend will show the intent claim, refined query pack, and executed queries here after research.</small>
+            <div id="query-preview" class="query-preview" aria-live="polite"></div>
+          </div>
+        </div>
+
         <div class="source-summary" id="source-summary" aria-live="polite">
           <div class="source-summary-item">
             <span>Selected source</span>
@@ -153,6 +178,7 @@
             <strong>Tag line + cite line + evidence paragraph + validation pass</strong>
           </div>
         </div>
+        <div id="source-candidates" class="source-candidates" aria-live="polite"></div>
 
         <div class="actions">
           <button id="submit-btn" class="primary" type="submit">
@@ -198,10 +224,68 @@
 
     <section class="output panel">
       <div class="section-head">
-        <h2>Generated card</h2>
+        <h2>Generated cards</h2>
         <p id="output-hint">No card yet. Paste evidence, enter a draft tag, or let Cut auto-research missing source details.</p>
       </div>
-      <div id="cards" class="cards empty-state" aria-live="polite"></div>
+      <div class="output-layout">
+        <div class="cards-stage">
+          <div id="cards" class="cards empty-state" aria-live="polite"></div>
+        </div>
+
+        <aside class="output-sidebar" aria-label="Card workflow tools">
+          <section class="mini-panel saved-panel">
+            <div class="mini-panel-head">
+              <div>
+                <span class="mini-label">Library</span>
+                <h3>Saved cards</h3>
+              </div>
+              <span class="mini-badge">Session list</span>
+            </div>
+            <p class="mini-copy">Cards you cut during this session will stack here for review, copying, and export.</p>
+            <ol id="saved-cards-list" class="saved-cards-list" aria-live="polite">
+              <li class="saved-cards-empty">
+                <strong>No saved cards yet.</strong>
+                <span>The next cut will appear here as a separate card entry.</span>
+              </li>
+            </ol>
+          </section>
+
+          <section class="mini-panel queue-panel">
+            <div class="mini-panel-head">
+              <div>
+                <span class="mini-label">Queue</span>
+                <h3>Multi-tag research</h3>
+              </div>
+              <span class="mini-badge">Planned cuts</span>
+            </div>
+            <p class="mini-copy">Stack multiple draft tags here so the backend can research, fill, and cut them in sequence.</p>
+            <label class="field field-compact">
+              <span>Queued draft tags</span>
+              <textarea id="queue-tags" rows="6" placeholder="Paste one tag per line."></textarea>
+            </label>
+            <div class="queue-actions">
+              <button id="queue-add-btn" class="secondary" type="button">Add to queue</button>
+              <button id="queue-run-btn" class="primary" type="button">Run queue</button>
+            </div>
+            <ol id="queue-progress" class="queue-progress" aria-live="polite"></ol>
+          </section>
+
+          <section class="mini-panel export-panel">
+            <div class="mini-panel-head">
+              <div>
+                <span class="mini-label">Export</span>
+                <h3>Download card file</h3>
+              </div>
+              <span class="mini-badge">.docx</span>
+            </div>
+            <p class="mini-copy">Export the current cards into a debate-ready Word file with verbatim-style spacing and citation blocks.</p>
+            <div class="export-actions">
+              <button id="download-docx-btn" class="primary" type="button">Download .docx</button>
+              <button id="download-text-btn" class="secondary" type="button">Download text</button>
+            </div>
+          </section>
+        </aside>
+      </div>
     </section>
   </main>
 
@@ -210,6 +294,10 @@
       <div class="card-head">
         <div class="card-kicker"></div>
         <button class="card-copy" type="button">Copy</button>
+      </div>
+      <div class="card-overline">
+        <span class="card-overline-pill">Debate file</span>
+        <span class="card-overline-pill card-overline-pill-muted">Verbatim-ready</span>
       </div>
       <h3 class="card-title"></h3>
       <div class="card-citation"></div>

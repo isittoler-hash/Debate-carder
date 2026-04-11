@@ -1,20 +1,27 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
 import ssl
 import sys
+import zipfile
 from datetime import date
 import urllib.request
 from collections import Counter
-from html import unescape
+from html import escape, unescape
 from html.parser import HTMLParser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
+
+try:
+    from pypdf import PdfReader  # type: ignore
+except Exception:
+    PdfReader = None
 
 
 def _load_env_file(path: Path) -> None:
@@ -67,11 +74,44 @@ SEARCH_TIMEOUT = _env_int("SEARCH_TIMEOUT", 20)
 FETCH_TIMEOUT = _env_int("FETCH_TIMEOUT", 20)
 FETCH_MAX_BYTES = _env_int("FETCH_MAX_BYTES", 1500000)
 MODEL_INPUT_MAX_CHARS = _env_int("MODEL_INPUT_MAX_CHARS", 24000)
+MODEL_OUTPUT_TOKENS = _env_int("MODEL_OUTPUT_TOKENS", 3500)
+MAX_QUEUE_TAGS = _env_int("MAX_QUEUE_TAGS", 25)
 SEARCH_ENGINE = os.getenv("SEARCH_ENGINE", "duckduckgo").strip().lower()
 USER_AGENT = os.getenv(
     "USER_AGENT",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 )
+BLOCKED_DOMAINS = [item.strip().lower() for item in os.getenv("BLOCKED_DOMAINS", "").split(",") if item.strip()]
+SEMANTIC_SEARCH_DEFAULT = os.getenv("SEMANTIC_SEARCH_DEFAULT", "true").strip().lower() not in {"0", "false", "no", "off"}
+
+ACADEMIC_BUCKET_TARGET = 4
+THINK_TANK_BUCKET_TARGET = 2
+WEB_BUCKET_TARGET = 2
+MIXED_SOURCE_POOL_SIZE = ACADEMIC_BUCKET_TARGET + THINK_TANK_BUCKET_TARGET + WEB_BUCKET_TARGET
+
+ACADEMIC_SEARCH_DOMAINS = [
+    "doi.org",
+    "arxiv.org",
+    "pubmed.ncbi.nlm.nih.gov",
+    "nber.org",
+    "ssrn.com",
+    "sciencedirect.com",
+    "springer.com",
+    "onlinelibrary.wiley.com",
+    "cambridge.org",
+    "tandfonline.com",
+    "sagepub.com",
+    "jstor.org",
+]
+
+THINK_TANK_SEARCH_DOMAINS = [
+    "rand.org",
+    "brookings.edu",
+    "cfr.org",
+    "imf.org",
+    "worldbank.org",
+    "nber.org",
+]
 
 
 STOPWORDS = {
@@ -128,12 +168,58 @@ STOPWORDS = {
     "your",
 }
 
+DEBATE_CARD_GUIDANCE = {
+    "sample_file_pattern": [
+        "Each card should read like a debate file block: Heading4-style tag line, one cite line, then an evidence paragraph.",
+        "Keep the full evidence paragraph for context instead of returning only a clipped quote.",
+        "The words meant to be read in-round should be the strongest, most strategic part of the source and should sit inside the context paragraph when possible.",
+    ],
+    "citation_conventions": [
+        "Prefer a short cite plus a bracketed full cite ending in //IT.",
+        "A strong full cite usually includes author, date, title, publication or qualifications, source URL, and date of access.",
+        "The cite should be one readable line, not a prose paragraph or metadata dump.",
+    ],
+    "evidence_selection_rules": [
+        "Select the exact source language that proves the draft tag, not vague background setup.",
+        "Prefer warrants, quantified findings, causal claims, comparative claims, or explicit author conclusions.",
+        "Avoid scene-setting, rhetoric, transitions, duplicated sentences, and unsupported summaries.",
+        "Underlined spans are the broader exact source language that supports the argument.",
+        "Highlighted spans are the exact words or phrases the debater would read aloud; they may jump across non-contiguous phrases.",
+        "Highlighted spans should usually sit inside underlined spans, but the model should never invent a separate read-text field.",
+        "If the source does not support the tag with a useful quote, reject the source instead of forcing a card.",
+    ],
+    "validation_rules": [
+        "Validation must separately check source fidelity, debate usefulness, and formatting quality.",
+        "Mark the card weak if any underline or highlight is not grounded in the source, if the tag overclaims, or if the card is too generic to win an argument.",
+        "Prefer a different source when the current one cannot produce a clean, quotable warrant.",
+    ],
+}
+
 
 def _json_response(handler: SimpleHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
     body = json.dumps(payload, ensure_ascii=True, indent=2).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _binary_response(
+    handler: SimpleHTTPRequestHandler,
+    status: int,
+    body: bytes,
+    *,
+    content_type: str,
+    filename: str,
+) -> None:
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
     handler.send_header("Access-Control-Allow-Origin", "*")
     handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -167,12 +253,57 @@ def _clean_text(value: Any) -> str:
     return str(value).strip()
 
 
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    cleaned = _clean_text(value).lower()
+    if cleaned in {"1", "true", "yes", "on"}:
+        return True
+    if cleaned in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def to_array(value: Any) -> list[Any]:
     if value is None:
         return []
     if isinstance(value, list):
         return value
     return [value]
+
+
+def _parse_domain_blacklist(value: Any) -> list[str]:
+    raw_items: list[str] = []
+    if isinstance(value, list):
+        raw_items = [str(item) for item in value]
+    else:
+        raw_items = re.split(r"[\s,;\r\n]+", _clean_text(value))
+
+    domains: list[str] = []
+    for item in [*BLOCKED_DOMAINS, *raw_items]:
+        cleaned = _clean_text(item).lower().strip().lstrip(".")
+        if cleaned.startswith("http://") or cleaned.startswith("https://"):
+            cleaned = (urlparse(cleaned).hostname or "").lower().lstrip(".")
+        if cleaned and cleaned not in domains:
+            domains.append(cleaned)
+    return domains
+
+
+def _hostname(url: str) -> str:
+    return (urlparse(_clean_text(url)).hostname or "").lower().lstrip(".")
+
+
+def _domain_is_blocked(url: str, blocked_domains: list[str]) -> bool:
+    host = _hostname(url)
+    if not host:
+        return False
+    for blocked in blocked_domains:
+        blocked = blocked.lower().lstrip(".")
+        if host == blocked or host.endswith(f".{blocked}"):
+            return True
+    return False
 
 
 def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -208,7 +339,23 @@ def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
         or payload.get("tag")
         or payload.get("topic")
     )
+    normalized["domain_blacklist"] = _parse_domain_blacklist(payload.get("domain_blacklist") or payload.get("domainBlacklist") or payload.get("blocked_domains") or payload.get("blockedDomains"))
+    normalized["draft_tags"] = _parse_queue_tags(payload.get("draft_tags") or payload.get("draftTags") or payload.get("queue_tags") or payload.get("queueTags") or payload.get("tags"))
+    normalized["cards"] = [card for card in to_array(payload.get("cards")) if isinstance(card, dict)]
+    normalized["title"] = _clean_text(payload.get("title") or payload.get("file_name") or payload.get("fileName"))
     normalized["provider"] = _clean_text(payload.get("provider") or payload.get("model_provider"))
+    normalized["semantic_search_enabled"] = _parse_bool(
+        payload.get("semantic_search_enabled")
+        if payload.get("semantic_search_enabled") is not None
+        else payload.get("semanticSearchEnabled"),
+        SEMANTIC_SEARCH_DEFAULT,
+    )
+    normalized["query_pack"] = payload.get("query_pack") if isinstance(payload.get("query_pack"), dict) else (
+        payload.get("queryPack") if isinstance(payload.get("queryPack"), dict) else {}
+    )
+    normalized["research_meta"] = payload.get("research_meta") if isinstance(payload.get("research_meta"), dict) else (
+        payload.get("researchMeta") if isinstance(payload.get("researchMeta"), dict) else {}
+    )
     return normalized
 
 
@@ -346,36 +493,120 @@ def _build_cite_line(short_citation: str, full_citation: str) -> str:
     return f"{' '.join(pieces)} //IT"
 
 
+def _normalize_span_list(value: Any, full_context: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+
+    normalized_context = _clean_text(full_context)
+    spans: list[dict[str, Any]] = []
+    cursor = 0
+    for item in value:
+        if isinstance(item, str):
+            item = {"text": item}
+        if not isinstance(item, dict):
+            continue
+
+        text = _clean_text(item.get("text") or item.get("quote") or item.get("value"))
+        if not text:
+            continue
+
+        start = item.get("start")
+        end = item.get("end")
+        try:
+            start_int = int(start) if start is not None else -1
+        except (TypeError, ValueError):
+            start_int = -1
+        try:
+            end_int = int(end) if end is not None else -1
+        except (TypeError, ValueError):
+            end_int = -1
+
+        if normalized_context:
+            if start_int < 0 or end_int <= start_int or normalized_context[start_int:end_int] != text:
+                start_int = normalized_context.find(text, max(0, cursor))
+                if start_int < 0:
+                    start_int = normalized_context.find(text)
+                end_int = start_int + len(text) if start_int >= 0 else -1
+        if start_int >= 0 and end_int > start_int:
+            cursor = end_int
+
+        normalized = {
+            "text": text,
+            "start": start_int if start_int >= 0 else None,
+            "end": end_int if end_int > start_int else None,
+        }
+        reason = _clean_text(item.get("reason"))
+        if reason:
+            normalized["reason"] = reason
+        spans.append(normalized)
+    return spans
+
+
+def _span_text(spans: list[dict[str, Any]]) -> str:
+    return " ... ".join(_clean_text(span.get("text")) for span in spans if _clean_text(span.get("text")))
+
+
+def _annotate_context_with_spans(full_context: str, underlined_spans: list[dict[str, Any]], highlighted_spans: list[dict[str, Any]]) -> str:
+    full_context = _clean_text(full_context)
+    if not full_context:
+        return _span_text(highlighted_spans) or _span_text(underlined_spans)
+
+    events: dict[int, list[str]] = {}
+    for span in underlined_spans:
+        start = span.get("start")
+        end = span.get("end")
+        if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(full_context):
+            events.setdefault(start, []).append("__")
+            events.setdefault(end, []).append("__")
+    for span in highlighted_spans:
+        start = span.get("start")
+        end = span.get("end")
+        if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(full_context):
+            events.setdefault(start, []).append("[[")
+            events.setdefault(end, []).append("]]")
+
+    pieces: list[str] = []
+    for index, char in enumerate(full_context):
+        if index in events:
+            pieces.extend(events[index])
+        pieces.append(char)
+    if len(full_context) in events:
+        pieces.extend(events[len(full_context)])
+    return "".join(pieces).strip()
+
+
 def _build_formatted_card(card: dict[str, Any]) -> str:
     lines = []
     tag_line = _clean_text(card.get("tag_line") or card.get("title"))
     cite_line = _clean_text(card.get("cite_line"))
-    verbal_citation = _clean_text(card.get("verbal_citation"))
     full_context = _clean_text(card.get("full_context") or card.get("body"))
-    read_text = _clean_text(card.get("read_text") or card.get("evidence"))
+    underlined_spans = _normalize_span_list(card.get("underlined_spans") or card.get("underlinedSpans"), full_context)
+    highlighted_spans = _normalize_span_list(card.get("highlighted_spans") or card.get("highlightedSpans"), full_context)
 
     if tag_line:
         lines.append(tag_line)
     if cite_line:
         lines.append(cite_line)
-    if verbal_citation:
-        lines.append(f"Verbal cite: {verbal_citation}")
     if full_context:
-        lines.append(full_context)
-    if read_text and read_text != full_context:
         lines.append("")
-        lines.append(f"Read text: {read_text}")
+        lines.append(_annotate_context_with_spans(full_context, underlined_spans, highlighted_spans))
+    elif highlighted_spans or underlined_spans:
+        lines.append("")
+        lines.append(_span_text(highlighted_spans) or _span_text(underlined_spans))
     return "\n".join(lines).strip()
 
 
 def _build_card_source(payload: dict[str, Any]) -> dict[str, Any]:
     return {
+        "source_id": _clean_text(payload.get("source_id")),
         "title": _clean_text(payload.get("source_title")),
         "author": _clean_text(payload.get("source_author")),
         "author_qualifications": _clean_text(payload.get("author_qualifications") or payload.get("source_author_qualifications")),
         "date": _clean_text(payload.get("source_date")),
         "publication": _clean_text(payload.get("source_publication")),
         "url": _clean_text(payload.get("source_url")),
+        "credibility_score": payload.get("credibility_score") if isinstance(payload.get("credibility_score"), (int, float)) else None,
+        "credibility_notes": _clean_text(payload.get("credibility_notes")),
     }
 
 
@@ -452,7 +683,8 @@ def _summarize_card_for_prompt(card: dict[str, Any]) -> dict[str, Any]:
     return {
         "tag_line": _clean_text(card.get("tag_line") or card.get("title")),
         "short_citation": _clean_text(card.get("short_citation")),
-        "read_text": _clean_text(card.get("read_text") or card.get("evidence") or card.get("card_text")),
+        "underlined_text": _clean_text(card.get("underlined_text") or _span_text(to_array(card.get("underlined_spans")))),
+        "highlighted_text": _clean_text(card.get("highlighted_text") or _span_text(to_array(card.get("highlighted_spans")))),
         "claim": _clean_text(card.get("claim")),
         "warrant": _clean_text(card.get("warrant")),
         "impact": _clean_text(card.get("impact")),
@@ -462,14 +694,29 @@ def _summarize_card_for_prompt(card: dict[str, Any]) -> dict[str, Any]:
 def _summarize_candidate_for_prompt(candidate: dict[str, Any]) -> dict[str, Any]:
     return {
         "index": int(candidate.get("index", 0) or 0),
+        "source_id": _clean_text(candidate.get("source_id") or f"S{int(candidate.get('index', 0) or 0)}"),
         "engine": _clean_text(candidate.get("engine")),
         "title": _clean_text(candidate.get("title")),
         "url": _clean_text(candidate.get("url")),
+        "domain": _hostname(candidate.get("url", "")),
         "author": _clean_text(candidate.get("author")),
         "publication": _clean_text(candidate.get("publication")),
         "published": _clean_text(candidate.get("published")),
         "score": round(float(candidate.get("score", 0.0)), 2),
+        "overall_score": round(float(candidate.get("score", 0.0)), 3),
+        "topical_fit_score": round(float(candidate.get("topical_fit_score", 0.0)), 3),
+        "quote_strength_score": round(float(candidate.get("quote_strength_score", 0.0)), 3),
+        "credibility_score": round(float(candidate.get("credibility_score", 0.0)), 3),
+        "paper_score": round(float(candidate.get("paper_score", 0.0)), 3),
+        "credibility_notes": _clean_text(candidate.get("credibility_notes")),
         "content_type": _clean_text(candidate.get("content_type")),
+        "source_class": _clean_text(candidate.get("source_class")),
+        "paper_verified": bool(candidate.get("paper_verified")),
+        "paper_confidence": round(float(candidate.get("paper_confidence", 0.0)), 3),
+        "doi": _clean_text(candidate.get("doi")),
+        "pdf_url": _clean_text(candidate.get("pdf_url")),
+        "paper_signals": _coerce_string_list(candidate.get("paper_signals")),
+        "summary_signals": _coerce_string_list(candidate.get("summary_signals")),
         "fetch_error": _clean_text(candidate.get("fetch_error")),
         "snippet": _candidate_snippet(candidate),
     }
@@ -506,6 +753,10 @@ def _build_prompt(
         "card_number": card_number,
         "emphasis": _clean_text(payload.get("emphasis")),
         "draft_tag": _clean_text(payload.get("draft_tag")),
+        "search_mode": "semantic" if _parse_bool(payload.get("semantic_search_enabled"), SEMANTIC_SEARCH_DEFAULT) else "literal",
+        "query_pack": payload.get("query_pack") if isinstance(payload.get("query_pack"), dict) else {},
+        "domain_blacklist": _parse_domain_blacklist(payload.get("domain_blacklist")),
+        "source_selection": payload.get("source_selection") if isinstance(payload.get("source_selection"), dict) else {},
         "prior_cards": [
             _summarize_card_for_prompt(card)
             for card in to_array(payload.get("prior_cards"))
@@ -516,6 +767,7 @@ def _build_prompt(
             for candidate in to_array(payload.get("candidate_sources"))
             if isinstance(candidate, dict)
         ],
+        "reference_guide": DEBATE_CARD_GUIDANCE,
     }
 
     if candidate_card:
@@ -525,9 +777,9 @@ def _build_prompt(
             "full_citation": _clean_text(candidate_card.get("full_citation") or candidate_card.get("citation")),
             "cite_line": _clean_text(candidate_card.get("cite_line")),
             "verbal_citation": _clean_text(candidate_card.get("verbal_citation")),
-            "read_text": _clean_text(candidate_card.get("read_text") or candidate_card.get("highlighted_text") or candidate_card.get("evidence")),
             "full_context": _clean_text(candidate_card.get("full_context") or candidate_card.get("body")),
-            "highlighted_text": _clean_text(candidate_card.get("highlighted_text") or candidate_card.get("excerpt")),
+            "underlined_spans": to_array(candidate_card.get("underlined_spans")),
+            "highlighted_spans": to_array(candidate_card.get("highlighted_spans")),
             "claim": _clean_text(candidate_card.get("claim")),
             "warrant": _clean_text(candidate_card.get("warrant")),
             "impact": _clean_text(candidate_card.get("impact")),
@@ -543,11 +795,23 @@ def _build_prompt(
                 "cite_line": "string",
                 "verbal_citation": "string",
                 "author_qualifications": "string",
-                "read_text": "string",
                 "full_context": "string",
-                "quoted_text": "string",
-                "exact_excerpt": "string",
-                "highlighted_text": "string",
+                "underlined_spans": [
+                    {
+                        "text": "string",
+                        "start": "number",
+                        "end": "number",
+                        "reason": "string",
+                    }
+                ],
+                "highlighted_spans": [
+                    {
+                        "text": "string",
+                        "start": "number",
+                        "end": "number",
+                        "reason": "string",
+                    }
+                ],
                 "date_accessed": "string",
                 "source_url": "string",
                 "formatted_card": "string",
@@ -561,13 +825,18 @@ def _build_prompt(
                 "body": "string",
                 "evidence": "string",
                 "source": {
+                    "source_id": "string",
                     "title": "string",
                     "author": "string",
                     "author_qualifications": "string",
                     "date": "string",
                     "publication": "string",
                     "url": "string",
+                    "credibility_score": "number",
+                    "credibility_notes": "string",
                 },
+                "quoted_text": "string",
+                "exact_excerpt": "string",
                 "excerpt": "string",
                 "highlighted_excerpt": "string",
             }
@@ -604,10 +873,21 @@ def _build_prompt(
             "requirements": [
                 "Return strict JSON only.",
                 "Review the proposed card for fidelity, usefulness, and debate usability.",
+                "Treat this as a separate validation call, not a continuation of drafting.",
+                "Check whether every underlined and highlighted span is actually grounded in the source article and whether the tag overclaims the source.",
+                "Use query_pack and search_mode as context for what the user actually meant by the draft tag.",
                 "If the card is weak, unsupported, too broad, duplicated, or awkwardly formatted, revise it.",
+                "If the source cannot support the tag cleanly, mark the card not useful instead of forcing a rewrite.",
+                "Treat draft_tag as the target claim. Keep the tag close to it, but tighten the tag if the source only supports a narrower claim.",
+                "Underlines mean every exact source substring that materially supports the argument: warrants, statistics, causal links, comparisons, author conclusions, and impact language.",
+                "Highlights mean only the exact words actually read aloud in-round.",
+                "Highlighted spans may be discontiguous and can jump across sentences or phrases.",
+                "Every underline and highlight span must be copied exactly from full_context and should include start/end offsets when possible. If offsets are uncertain, keep the exact text and leave the offsets empty instead of guessing.",
+                "Reject or revise the card if highlighted spans are not exact source substrings, if highlights are not inside underlined support when offsets allow checking, or if the tag is stronger than the highlighted evidence.",
                 "Return exactly one final card in a cards array.",
-                "Include a validation object with useful, revised, notes, issues, and confidence when possible.",
-                "Keep the debate-file structure intact: tag line, short cite, bracketed cite line ending in //IT, then readable evidence text.",
+                "Include a validation object with useful, revised, passed, notes, issues, source_checks, confidence, tag_fit, span_grounding, and source_choice when possible.",
+                "Keep the debate-file structure intact: tag line, short cite, bracketed cite line ending in //IT, then one readable evidence paragraph.",
+                "Do not ask for or create a freeform read_text field; derive any read-aloud text only from highlighted_spans.",
                 "Preserve compatibility by also returning the legacy fields title, tag, citation, card_text, body, evidence, excerpt, and highlighted_excerpt.",
             ],
             "input": base_input,
@@ -616,9 +896,14 @@ def _build_prompt(
                 "validation": {
                     "useful": "boolean",
                     "revised": "boolean",
+                    "passed": "boolean",
                     "notes": "string",
                     "issues": ["string"],
+                    "source_checks": ["string"],
                     "confidence": "number",
+                    "tag_fit": "string",
+                    "span_grounding": "string",
+                    "source_choice": "string",
                 },
             },
         }
@@ -629,9 +914,22 @@ def _build_prompt(
             "Return strict JSON only.",
             "Create exactly one card in the cards array.",
             "Every card must be concise, reusable in debate, and anchored to the source text.",
-            "Prefer the card shape used in actual debate files: tag_line, short_citation, full_citation, verbal_citation, read_text, full_context, highlighted_text, date_accessed, and source_url.",
+            "Prefer the card shape used in actual debate files: tag_line, short_citation, full_citation, verbal_citation, full_context, underlined_spans, highlighted_spans, date_accessed, and source_url.",
             "If available, include author_qualifications and optional claim, warrant, impact fields.",
-            "Model the result after the user's actual files: tag line, short cite plus bracketed full cite ending with //IT, then a full evidence paragraph with a clearly identified read_text/highlighted_text segment.",
+            "Model the result after the user's actual files: tag line, short cite plus bracketed full cite ending with //IT, then a full evidence paragraph with clearly identified underlines and highlights.",
+            "Use the reference guide to mimic actual debate-card conventions rather than generic article summarization.",
+            "Use query_pack and search_mode as research context: search and source choice should follow the meaning of the tag, not only its literal words.",
+            "Use candidate_sources and source_selection as the research packet: compare the top sources, then cut from the current selected source_id unless the source cannot support the draft tag.",
+            "Keep source credibility and source usefulness separate: high credibility alone is not enough if the quote does not prove the tag, and a merely generic source should not outrank a better topical quote.",
+            "Treat draft_tag as the target claim. The tag_line should stay close to that claim, but must not overclaim the source. If the source supports only a narrower version, tighten the tag_line rather than broadening the evidence.",
+            "Determine which exact parts of the source are the strategic warrants, statistics, causal links, comparative claims, author conclusions, or impact language, and mark those as underlined_spans.",
+            "Underlines are every exact source substring that materially supports the argument. Highlights are only the exact words actually read in-round.",
+            "Highlights may be discontiguous and can jump phrase-to-phrase or sentence-to-sentence. A highlighted span should usually be a subset of an underlined span.",
+            "Do not create a made-up read_text field. Select exact substrings from full_context and serialize them as spans.",
+            "Do not highlight setup, throat-clearing, or filler merely because it appears near the quote.",
+            "full_context should preserve surrounding context and should usually be two to six sentences or a short paragraph when the source supports it.",
+            "Stay very close to the draft_tag. If the source only weakly supports the tag, prefer a tighter tag instead of a broader one.",
+            "If the source is too vague to produce a useful card, return the best possible grounded card rather than inventing stronger language.",
             "If earlier cards were provided in prior_cards, avoid duplicating them and keep this card on a different useful angle.",
             "Preserve compatibility by also returning the legacy fields title, tag, citation, card_text, body, evidence, excerpt, and highlighted_excerpt.",
         ],
@@ -649,29 +947,47 @@ def _normalize_model_cards(cards: Any, requested_cards: int) -> list[dict[str, A
         if not isinstance(card, dict):
             continue
         source = card.get("source") if isinstance(card.get("source"), dict) else {}
+        raw_credibility_score = source.get("credibility_score") if isinstance(source.get("credibility_score"), (int, float)) else card.get("credibility_score", card.get("credibilityScore"))
         source_info = {
-            "title": _clean_text(source.get("title") or card.get("source_title") or card.get("publication") or card.get("outlet")),
-            "author": _clean_text(source.get("author") or card.get("author")),
-            "author_qualifications": _clean_text(source.get("author_qualifications") or card.get("author_qualifications")),
-            "date": _clean_text(source.get("date") or card.get("source_date") or card.get("date")),
-            "publication": _clean_text(source.get("publication") or source.get("outlet") or card.get("source_publication") or card.get("publication") or card.get("outlet")),
-            "url": _clean_text(source.get("url") or card.get("source_url") or card.get("url")),
+            "title": _clean_text(source.get("title") or card.get("source_title") or card.get("sourceTitle") or card.get("publication") or card.get("outlet")),
+            "author": _clean_text(source.get("author") or card.get("source_author") or card.get("sourceAuthor") or card.get("author")),
+            "author_qualifications": _clean_text(source.get("author_qualifications") or card.get("author_qualifications") or card.get("authorQualifications")),
+            "date": _clean_text(source.get("date") or card.get("source_date") or card.get("sourceDate") or card.get("date")),
+            "publication": _clean_text(source.get("publication") or source.get("outlet") or card.get("source_publication") or card.get("sourcePublication") or card.get("publication") or card.get("outlet")),
+            "url": _clean_text(source.get("url") or card.get("source_url") or card.get("sourceUrl") or card.get("url")),
+            "source_id": _clean_text(source.get("source_id") or card.get("source_id") or card.get("sourceId")),
+            "credibility_score": raw_credibility_score if isinstance(raw_credibility_score, (int, float)) else None,
+            "credibility_notes": _clean_text(source.get("credibility_notes") or card.get("credibility_notes") or card.get("credibilityNotes")),
         }
-        tag_line = _clean_text(card.get("tag_line") or card.get("title") or card.get("heading") or card.get("tag"))
-        read_text = _clean_text(card.get("read_text") or card.get("highlighted_text") or card.get("highlighted_excerpt") or card.get("excerpt") or card.get("evidence") or card.get("card_text"))
-        full_context = _clean_text(card.get("full_context") or card.get("body") or card.get("card_text") or card.get("evidence") or read_text)
-        short_citation = _clean_text(card.get("short_citation")) or _build_short_citation(source_info)
-        full_citation = _clean_text(card.get("full_citation")) or _build_full_citation(source_info, _clean_text(card.get("date_accessed")) or _today_accessed())
-        cite_line = _clean_text(card.get("cite_line")) or _build_cite_line(short_citation, full_citation)
-        verbal_citation = _clean_text(card.get("verbal_citation")) or _build_verbal_citation(source_info)
-        date_accessed = _clean_text(card.get("date_accessed")) or _today_accessed()
-        highlighted_text = _clean_text(card.get("highlighted_text") or card.get("highlighted_excerpt") or read_text)
-        exact_excerpt = _clean_text(card.get("exact_excerpt") or card.get("quoted_text") or card.get("excerpt") or highlighted_text or read_text)
+        tag_line = _clean_text(card.get("tag_line") or card.get("tagLine") or card.get("title") or card.get("heading") or card.get("tag"))
+        full_context = _clean_text(card.get("full_context") or card.get("fullContext") or card.get("body") or card.get("card_text") or card.get("cardText") or card.get("evidence") or card.get("read_text") or card.get("highlighted_text") or card.get("highlightedText"))
+        underlined_spans = _normalize_span_list(card.get("underlined_spans") or card.get("underlinedSpans"), full_context)
+        highlighted_spans = _normalize_span_list(card.get("highlighted_spans") or card.get("highlightedSpans"), full_context)
+        if not underlined_spans:
+            fallback_underlined = _clean_text(card.get("underlined_text") or card.get("underlinedText") or card.get("read_text") or card.get("evidence") or card.get("card_text") or card.get("cardText"))
+            if fallback_underlined:
+                underlined_spans = _normalize_span_list([{"text": fallback_underlined}], full_context)
+        if not highlighted_spans:
+            fallback_highlight = _clean_text(card.get("highlighted_text") or card.get("highlightedText") or card.get("highlighted_excerpt") or card.get("highlightedExcerpt") or card.get("excerpt") or card.get("read_text"))
+            if fallback_highlight:
+                highlighted_spans = _normalize_span_list([{"text": fallback_highlight}], full_context)
+        if not underlined_spans and highlighted_spans:
+            underlined_spans = [dict(span) for span in highlighted_spans]
+
+        underlined_text = _span_text(underlined_spans)
+        highlighted_text = _span_text(highlighted_spans) or _clean_text(card.get("highlighted_text") or card.get("highlightedText") or card.get("highlighted_excerpt") or card.get("highlightedExcerpt") or card.get("excerpt"))
+        read_text = highlighted_text or _clean_text(card.get("read_text") or card.get("highlighted_text") or card.get("highlightedText") or card.get("highlighted_excerpt") or card.get("highlightedExcerpt") or card.get("excerpt") or card.get("evidence") or card.get("card_text") or card.get("cardText"))
+        short_citation = _clean_text(card.get("short_citation") or card.get("shortCitation")) or _build_short_citation(source_info)
+        full_citation = _clean_text(card.get("full_citation") or card.get("fullCitation")) or _build_full_citation(source_info, _clean_text(card.get("date_accessed") or card.get("dateAccessed") or card.get("dox")) or _today_accessed())
+        cite_line = _clean_text(card.get("cite_line") or card.get("citeLine")) or _build_cite_line(short_citation, full_citation)
+        verbal_citation = _clean_text(card.get("verbal_citation") or card.get("verbalCitation")) or _build_verbal_citation(source_info)
+        date_accessed = _clean_text(card.get("date_accessed") or card.get("dateAccessed") or card.get("dox")) or _today_accessed()
+        exact_excerpt = _clean_text(card.get("exact_excerpt") or card.get("exactExcerpt") or card.get("quoted_text") or card.get("quotedText") or card.get("excerpt") or highlighted_text or read_text)
         claim = _clean_text(card.get("claim") or card.get("takeaway") or card.get("thesis"))
         warrant = _clean_text(card.get("warrant") or card.get("reason") or card.get("analysis"))
         impact = _clean_text(card.get("impact") or card.get("significance") or card.get("implication"))
-        source_url = _clean_text(card.get("source_url") or source_info["url"])
-        author_qualifications = _clean_text(card.get("author_qualifications") or source_info["author_qualifications"])
+        source_url = _clean_text(card.get("source_url") or card.get("sourceUrl") or source_info["url"])
+        author_qualifications = _clean_text(card.get("author_qualifications") or card.get("authorQualifications") or source_info["author_qualifications"])
         normalized = {
             "tag_line": tag_line,
             "short_citation": short_citation,
@@ -679,7 +995,9 @@ def _normalize_model_cards(cards: Any, requested_cards: int) -> list[dict[str, A
             "cite_line": cite_line,
             "verbal_citation": verbal_citation,
             "author_qualifications": author_qualifications,
-            "read_text": read_text,
+            "underlined_spans": underlined_spans,
+            "highlighted_spans": highlighted_spans,
+            "underlined_text": underlined_text,
             "full_context": full_context,
             "quoted_text": exact_excerpt,
             "exact_excerpt": exact_excerpt,
@@ -692,9 +1010,9 @@ def _normalize_model_cards(cards: Any, requested_cards: int) -> list[dict[str, A
             "title": tag_line,
             "tag": tag_line,
             "citation": full_citation or short_citation,
-            "card_text": read_text or full_context,
+            "card_text": full_context or highlighted_text,
             "body": full_context,
-            "evidence": read_text or full_context,
+            "evidence": full_context or highlighted_text,
             "source": {
                 **source_info,
             },
@@ -936,14 +1254,64 @@ def _search_web(query: str, limit: int) -> list[dict[str, Any]]:
     return results
 
 
+def _extract_pdf_url_from_html(html_text: str, base_url: str) -> str:
+    patterns = [
+        re.compile(r'citation_pdf_url["\']?\s+content=["\']([^"\']+)["\']', re.I),
+        re.compile(r'href=["\']([^"\']+\.pdf(?:\?[^"\']*)?)["\']', re.I),
+    ]
+    for pattern in patterns:
+        match = pattern.search(html_text)
+        if match:
+            return _normalize_web_url(urljoin(base_url, unescape(match.group(1))))
+    return ""
+
+
+def _extract_doi(text: str, url: str = "") -> str:
+    doi_match = re.search(r"\b10\.\d{4,9}/[-._;()/:A-Z0-9]+\b", f"{url} {text}", re.I)
+    if doi_match:
+        return doi_match.group(0).rstrip(").,;")
+    parsed = urlparse(url)
+    if parsed.netloc.endswith("doi.org"):
+        return parsed.path.strip("/")
+    return ""
+
+
+def _extract_pdf_text(body: bytes) -> str:
+    if PdfReader is None:
+        return ""
+    try:
+        reader = PdfReader(io.BytesIO(body))
+        return re.sub(r"\s+", " ", " ".join((page.extract_text() or "") for page in reader.pages)).strip()
+    except Exception:
+        return ""
+
+
 def _fetch_article(url: str, timeout: int = FETCH_TIMEOUT, max_bytes: int = FETCH_MAX_BYTES) -> dict[str, Any]:
     body, content_type, charset, final_url = _fetch_url_bytes(url, timeout, max_bytes)
+    if "pdf" in content_type or final_url.lower().endswith(".pdf"):
+        extracted = _extract_pdf_text(body)
+        return {
+            "url": final_url,
+            "landing_page_url": final_url,
+            "title": "",
+            "publication": urlparse(final_url).netloc,
+            "author": "",
+            "published": "",
+            "description": "",
+            "text": extracted,
+            "content_type": content_type or "application/pdf",
+            "byte_count": len(body),
+            "pdf_url": final_url,
+            "doi": _extract_doi("", final_url),
+        }
+
     text = body.decode(charset, errors="replace")
     if "html" in content_type or "xml" in content_type or "<html" in text[:1000].lower():
         parsed = _parse_html_text(text)
         extracted = parsed["text"]
         return {
             "url": final_url,
+            "landing_page_url": final_url,
             "title": parsed["title"],
             "publication": parsed["title"] or urlparse(final_url).netloc,
             "author": parsed["author"],
@@ -952,11 +1320,14 @@ def _fetch_article(url: str, timeout: int = FETCH_TIMEOUT, max_bytes: int = FETC
             "text": extracted,
             "content_type": content_type,
             "byte_count": len(body),
+            "pdf_url": _extract_pdf_url_from_html(text, final_url),
+            "doi": _extract_doi(text, final_url),
         }
 
     cleaned = re.sub(r"\s+", " ", text).strip()
     return {
         "url": final_url,
+        "landing_page_url": final_url,
         "title": "",
         "publication": urlparse(final_url).netloc,
         "author": "",
@@ -965,7 +1336,163 @@ def _fetch_article(url: str, timeout: int = FETCH_TIMEOUT, max_bytes: int = FETC
         "text": cleaned,
         "content_type": content_type,
         "byte_count": len(body),
+        "pdf_url": final_url if final_url.lower().endswith(".pdf") else "",
+        "doi": _extract_doi(cleaned, final_url),
     }
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        cleaned = re.sub(r"\s+", " ", _clean_text(value)).strip()
+        key = cleaned.lower()
+        if cleaned and key not in seen:
+            seen.add(key)
+            output.append(cleaned)
+    return output
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    return _dedupe_strings([_clean_text(item) for item in to_array(value) if _clean_text(item)])
+
+
+def _build_query_phrase(*parts: str) -> str:
+    return re.sub(r"\s+", " ", " ".join(_clean_text(part) for part in parts if _clean_text(part))).strip()
+
+
+def _heuristic_query_pack(payload: dict[str, Any], *, semantic_enabled: bool) -> dict[str, Any]:
+    draft_tag = _clean_text(payload.get("draft_tag"))
+    resolution = _clean_text(payload.get("resolution"))
+    emphasis = _clean_text(payload.get("emphasis"))
+    literal_query = _build_query_phrase(draft_tag, resolution, emphasis)
+    must_have_terms = sorted(_score_terms(draft_tag or literal_query))[:8]
+    avoid_terms = ["podcast", "news", "press release", "summary", "overview", "blog"]
+
+    if not semantic_enabled:
+        return {
+            "intent_claim": draft_tag or literal_query,
+            "literal_query": literal_query,
+            "semantic_queries": [literal_query] if literal_query else [],
+            "academic_queries": [_build_query_phrase(literal_query, "study evidence paper pdf doi")],
+            "think_tank_queries": [_build_query_phrase(literal_query, "report analysis policy brief")],
+            "fallback_web_queries": [literal_query],
+            "must_have_terms": must_have_terms,
+            "avoid_terms": avoid_terms,
+            "explanation": "Literal search mode keeps the tag close to the original wording and adds light evidence-oriented query templates.",
+        }
+
+    intent_claim = draft_tag or literal_query
+    semantic_queries = _dedupe_strings(
+        [
+            literal_query,
+            _build_query_phrase(intent_claim, "evidence"),
+            _build_query_phrase(intent_claim, "causes effects"),
+            _build_query_phrase(intent_claim, "study report analysis"),
+            _build_query_phrase(emphasis, intent_claim, resolution),
+        ]
+    )
+    return {
+        "intent_claim": intent_claim,
+        "literal_query": literal_query,
+        "semantic_queries": semantic_queries,
+        "academic_queries": _dedupe_strings(
+            [
+                _build_query_phrase(intent_claim, "study evidence paper pdf doi"),
+                _build_query_phrase(intent_claim, "journal article abstract"),
+                _build_query_phrase(intent_claim, resolution, "working paper"),
+            ]
+        ),
+        "think_tank_queries": _dedupe_strings(
+            [
+                _build_query_phrase(intent_claim, "report analysis"),
+                _build_query_phrase(intent_claim, emphasis, "policy brief"),
+            ]
+        ),
+        "fallback_web_queries": _dedupe_strings(
+            [
+                literal_query,
+                _build_query_phrase(intent_claim, "evidence"),
+                _build_query_phrase(intent_claim, emphasis),
+            ]
+        ),
+        "must_have_terms": must_have_terms,
+        "avoid_terms": avoid_terms,
+        "explanation": "Heuristic semantic mode expands the tag into meaning-adjacent evidence, causation, and report-oriented search strings without changing the claim.",
+    }
+
+
+def _build_query_refinement_prompt(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "task": "Refine a debate draft tag into meaning-based research queries.",
+        "requirements": [
+            "Return strict JSON only.",
+            "Interpret the meaning of the draft_tag rather than searching only for its exact wording.",
+            "Preserve the same argument claim; do not broaden it into a different argument.",
+            "Generate search strings that can find papers, think-tank reports, and strong public-web evidence about the same claim.",
+            "Prefer causal, mechanism, impact, or comparison language when it helps find better evidence.",
+            "Include must_have_terms that should stay close to the claim and avoid_terms that reduce low-quality summary/news results.",
+            "Keep each query concise enough for a search engine.",
+        ],
+        "input": {
+            "draft_tag": _clean_text(payload.get("draft_tag")),
+            "resolution": _clean_text(payload.get("resolution")),
+            "side": _normalize_side(_clean_text(payload.get("side"))),
+            "emphasis": _clean_text(payload.get("emphasis")),
+        },
+        "output_schema": {
+            "intent_claim": "string",
+            "literal_query": "string",
+            "semantic_queries": ["string"],
+            "academic_queries": ["string"],
+            "think_tank_queries": ["string"],
+            "fallback_web_queries": ["string"],
+            "must_have_terms": ["string"],
+            "avoid_terms": ["string"],
+            "explanation": "string",
+        },
+    }
+
+
+def _normalize_query_pack(raw: dict[str, Any], payload: dict[str, Any], *, semantic_enabled: bool) -> dict[str, Any]:
+    heuristic = _heuristic_query_pack(payload, semantic_enabled=semantic_enabled)
+    return {
+        "intent_claim": _clean_text(raw.get("intent_claim")) or heuristic["intent_claim"],
+        "literal_query": _clean_text(raw.get("literal_query")) or heuristic["literal_query"],
+        "semantic_queries": _coerce_string_list(raw.get("semantic_queries")) or heuristic["semantic_queries"],
+        "academic_queries": _coerce_string_list(raw.get("academic_queries")) or heuristic["academic_queries"],
+        "think_tank_queries": _coerce_string_list(raw.get("think_tank_queries")) or heuristic["think_tank_queries"],
+        "fallback_web_queries": _coerce_string_list(raw.get("fallback_web_queries")) or heuristic["fallback_web_queries"],
+        "must_have_terms": _coerce_string_list(raw.get("must_have_terms")) or heuristic["must_have_terms"],
+        "avoid_terms": _coerce_string_list(raw.get("avoid_terms")) or heuristic["avoid_terms"],
+        "explanation": _clean_text(raw.get("explanation")) or heuristic["explanation"],
+    }
+
+
+def _refine_query_pack(payload: dict[str, Any]) -> tuple[dict[str, Any], str, bool, str]:
+    semantic_enabled = _parse_bool(payload.get("semantic_search_enabled"), SEMANTIC_SEARCH_DEFAULT)
+    search_mode = "semantic" if semantic_enabled else "literal"
+    provided = payload.get("query_pack") if isinstance(payload.get("query_pack"), dict) else {}
+    if provided:
+        return _normalize_query_pack(provided, payload, semantic_enabled=semantic_enabled), search_mode, False, "provided"
+
+    if not _clean_text(payload.get("draft_tag")):
+        heuristic = _heuristic_query_pack(payload, semantic_enabled=semantic_enabled)
+        return heuristic, search_mode, False, "heuristic"
+
+    if semantic_enabled:
+        prompt = _build_query_refinement_prompt(payload)
+        for provider in _provider_preference(payload):
+            if provider == "fallback":
+                break
+            try:
+                refined = _call_provider_json(provider, prompt)
+                return _normalize_query_pack(refined, payload, semantic_enabled=True), "semantic", True, provider
+            except Exception:
+                continue
+
+    heuristic = _heuristic_query_pack(payload, semantic_enabled=semantic_enabled)
+    return heuristic, search_mode, False, "heuristic"
 
 
 def _research_query(payload: dict[str, Any]) -> str:
@@ -977,6 +1504,150 @@ def _research_query(payload: dict[str, Any]) -> str:
     query = " ".join(piece for piece in pieces if piece)
     return re.sub(r"\s+", " ", query).strip()
 
+
+def _is_academic_host(host: str) -> bool:
+    host = host.lower()
+    if not host:
+        return False
+    return host.endswith(".edu") or any(domain in host for domain in ACADEMIC_SEARCH_DOMAINS)
+
+
+def _is_think_tank_host(host: str) -> bool:
+    host = host.lower()
+    if not host:
+        return False
+    return any(domain in host for domain in THINK_TANK_SEARCH_DOMAINS)
+
+
+def _normalized_title_key(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", _clean_text(title).lower()).strip()
+
+
+def _summary_signals(candidate: dict[str, Any]) -> list[str]:
+    haystack = " ".join(
+        [
+            _clean_text(candidate.get("title")).lower(),
+            _clean_text(candidate.get("url")).lower(),
+            _clean_text(candidate.get("description")).lower(),
+        ]
+    )
+    signals: list[str] = []
+    for token in ("news", "blog", "press", "release", "summary", "overview", "podcast", "insight", "magazine"):
+        if token in haystack:
+            signals.append(token)
+    return signals
+
+
+def _paper_signals(candidate: dict[str, Any]) -> list[str]:
+    text = _clean_text(candidate.get("text"))
+    title = _clean_text(candidate.get("title"))
+    url = _clean_text(candidate.get("url"))
+    signals: list[str] = []
+    doi = _clean_text(candidate.get("doi"))
+    pdf_url = _clean_text(candidate.get("pdf_url"))
+    if doi:
+        signals.append("doi")
+    if pdf_url:
+        signals.append("pdf")
+    lower_text = text.lower()
+    lower_url = url.lower()
+    if any(marker in lower_text for marker in ("abstract", "introduction", "method", "results", "discussion", "references")):
+        signals.append("paper_sections")
+    if "arxiv.org" in lower_url:
+        signals.append("arxiv")
+    if "ssrn.com" in lower_url:
+        signals.append("ssrn")
+    if "nber.org" in lower_url or "working paper" in f"{title} {text}".lower():
+        signals.append("working_paper")
+    if "pubmed.ncbi.nlm.nih.gov" in lower_url:
+        signals.append("pubmed")
+    if re.search(r"\b(vol\.?|volume|issue|journal)\b", f"{title} {text}", re.I):
+        signals.append("journal_metadata")
+    return _dedupe_strings(signals)
+
+
+def _classify_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    host = _hostname(candidate.get("url", ""))
+    title = _clean_text(candidate.get("title"))
+    text = _clean_text(candidate.get("text"))
+    summary_signals = _summary_signals(candidate)
+    paper_signals = _paper_signals(candidate)
+    paper_confidence = 0.0
+    if paper_signals:
+        paper_confidence += min(0.75, 0.16 * len(paper_signals))
+    if len(text) > 3000:
+        paper_confidence += 0.12
+    if _is_academic_host(host):
+        paper_confidence += 0.12
+    if summary_signals:
+        paper_confidence -= min(0.4, 0.1 * len(summary_signals))
+    paper_confidence = max(0.0, min(1.0, paper_confidence))
+
+    source_class = "general_web"
+    if _is_think_tank_host(host):
+        source_class = "think_tank"
+    if _is_academic_host(host) or paper_signals:
+        source_class = "peer_reviewed"
+        joined = " ".join(paper_signals).lower()
+        if "arxiv" in joined or "ssrn" in joined:
+            source_class = "preprint"
+        elif "working_paper" in joined:
+            source_class = "working_paper"
+    if summary_signals and not paper_signals:
+        source_class = "summary_or_news"
+
+    paper_verified = source_class in {"peer_reviewed", "preprint", "working_paper"} and paper_confidence >= 0.45
+    return {
+        "source_class": source_class,
+        "paper_verified": paper_verified,
+        "paper_confidence": round(paper_confidence, 3),
+        "paper_signals": paper_signals,
+        "summary_signals": summary_signals,
+        "summary_risk": round(min(1.0, len(summary_signals) * 0.2), 3),
+    }
+
+
+def _search_web_domains(query: str, limit: int, domains: list[str]) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for domain in domains:
+        filtered_query = _build_query_phrase(f"site:{domain}", query)
+        for item in _search_web(filtered_query, min(limit, 6)):
+            url = _clean_text(item.get("url"))
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            results.append({**item, "seed_query": filtered_query, "seed_domain": domain})
+            if len(results) >= limit:
+                return results
+    return results
+
+
+def _collect_discovered_sources(query_pack: dict[str, Any], semantic_enabled: bool) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
+    discovered = {"academic": [], "think_tank": [], "general_web": []}
+    executed_queries: list[dict[str, Any]] = []
+
+    academic_queries = _coerce_string_list(query_pack.get("academic_queries"))
+    think_tank_queries = _coerce_string_list(query_pack.get("think_tank_queries"))
+    fallback_queries = _coerce_string_list(query_pack.get("fallback_web_queries"))
+    literal_query = _clean_text(query_pack.get("literal_query"))
+
+    if not semantic_enabled and literal_query:
+        academic_queries = [_build_query_phrase(literal_query, "study evidence paper")]
+        think_tank_queries = [_build_query_phrase(literal_query, "report analysis")]
+        fallback_queries = [literal_query]
+
+    for query in academic_queries[:3]:
+        executed_queries.append({"stage": "academic", "query": query})
+        discovered["academic"].extend(_search_web_domains(query, 8, ACADEMIC_SEARCH_DOMAINS))
+    for query in think_tank_queries[:2]:
+        executed_queries.append({"stage": "think_tank", "query": query})
+        discovered["think_tank"].extend(_search_web_domains(query, 6, THINK_TANK_SEARCH_DOMAINS))
+    for query in fallback_queries[:3]:
+        executed_queries.append({"stage": "general_web", "query": query})
+        discovered["general_web"].extend([{**item, "seed_query": query} for item in _search_web(query, 8)])
+
+    return discovered, executed_queries
 
 def _missing_source_fields(payload: dict[str, Any]) -> list[str]:
     fields = {
@@ -990,26 +1661,113 @@ def _missing_source_fields(payload: dict[str, Any]) -> list[str]:
     return [name for name, value in fields.items() if not _clean_text(value)]
 
 
-def _candidate_score(candidate: dict[str, Any], query_terms: set[str], phrase: str) -> float:
+def _domain_reputation_score(host: str) -> float:
+    if not host:
+        return 0.35
+    if host.endswith(".gov") or host.endswith(".edu"):
+        return 0.95
+    if host.endswith(".org"):
+        return 0.76
+    reputable_substrings = (
+        "reuters.com",
+        "apnews.com",
+        "rand.org",
+        "brookings.edu",
+        "foreignaffairs.com",
+        "cfr.org",
+        "imf.org",
+        "worldbank.org",
+        "nber.org",
+        "nature.com",
+        "science.org",
+        "cambridge.org",
+        "routledge.com",
+        "jstor.org",
+    )
+    if any(part in host for part in reputable_substrings):
+        return 0.84
+    if any(part in host for part in ("substack.com", "blogspot.", "medium.com", "wordpress.com")):
+        return 0.38
+    return 0.58
+
+
+def _candidate_metrics(candidate: dict[str, Any], query_terms: set[str], phrase: str) -> dict[str, Any]:
     title = _clean_text(candidate.get("title")).lower()
     description = _clean_text(candidate.get("description")).lower()
     text = _clean_text(candidate.get("text")).lower()
-    score = 0.0
+    host = _hostname(candidate.get("url", ""))
+    source_class = _clean_text(candidate.get("source_class"))
+    paper_verified = bool(candidate.get("paper_verified"))
+    paper_confidence = float(candidate.get("paper_confidence", 0.0) or 0.0)
+    summary_risk = float(candidate.get("summary_risk", 0.0) or 0.0)
+
+    topic_points = 0.0
     for term in query_terms:
         if term in title:
-            score += 4
+            topic_points += 4
         if term in description:
-            score += 2
+            topic_points += 2
         if term in text:
-            score += 1
+            topic_points += 1
     if phrase and phrase in title:
-        score += 12
+        topic_points += 12
     if phrase and phrase in text:
-        score += 6
-    score += min(len(text) / 1000.0, 8.0)
+        topic_points += 6
+
+    quote_points = 0.0
+    quote_points += min(len(text) / 1000.0, 8.0)
     if len(text) < 300:
-        score -= 3
-    return score
+        quote_points -= 3
+    if re.search(r"\b(percent|million|billion|study|report|analysis|data|evidence|found|concludes|shows)\b", text, re.I):
+        quote_points += 3.5
+    if re.search(r"\b(because|therefore|causes|results in|leads to|increases|decreases|hurts|benefits)\b", text, re.I):
+        quote_points += 2.5
+
+    credibility_points = 0.0
+    notes: list[str] = []
+    domain_score = _domain_reputation_score(host)
+    credibility_points += domain_score * 12
+    if host:
+        notes.append(f"Domain reputation baseline from {host}.")
+    if _clean_text(candidate.get("author")):
+        credibility_points += 3
+        notes.append("Named author present.")
+    if _clean_text(candidate.get("published")):
+        credibility_points += 2
+        notes.append("Publication date present.")
+    if _clean_text(candidate.get("publication")):
+        credibility_points += 2
+        notes.append("Publication or outlet metadata present.")
+    if str(candidate.get("url", "")).startswith("https://"):
+        credibility_points += 1
+    if paper_verified:
+        credibility_points += 5
+        notes.append("Verified as a likely full paper rather than a summary page.")
+    elif source_class in {"peer_reviewed", "preprint", "working_paper"}:
+        credibility_points += max(0.0, paper_confidence * 3.0)
+    if source_class == "think_tank":
+        credibility_points += 2
+        notes.append("Think-tank or policy-report source.")
+    if summary_risk:
+        credibility_points -= min(6.0, summary_risk * 8.0)
+        notes.append("Summary/news signals reduce confidence that this is the primary evidence source.")
+    if _clean_text(candidate.get("fetch_error")):
+        credibility_points -= 10
+        notes.append("Fetch failed or source content was not extracted cleanly.")
+
+    topical_fit_score = max(0.0, min(1.0, topic_points / 30.0))
+    quote_strength_score = max(0.0, min(1.0, (quote_points + 3.0) / 18.0))
+    credibility_score = max(0.0, min(1.0, credibility_points / 20.0))
+    paper_score = max(0.0, min(1.0, paper_confidence))
+    overall_score = round((topical_fit_score * 0.45) + (quote_strength_score * 0.22) + (credibility_score * 0.18) + (paper_score * 0.15), 4)
+    return {
+        "topical_fit_score": topical_fit_score,
+        "quote_strength_score": quote_strength_score,
+        "credibility_score": credibility_score,
+        "paper_score": paper_score,
+        "credibility_notes": " ".join(notes).strip(),
+        "score": overall_score,
+    }
 
 
 def _candidate_snippet(candidate: dict[str, Any], max_chars: int = SOURCE_SELECTION_SNIPPET_CHARS) -> str:
@@ -1023,72 +1781,228 @@ def _candidate_snippet(candidate: dict[str, Any], max_chars: int = SOURCE_SELECT
 def _public_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     return {
         "index": int(candidate.get("index", 0) or 0),
+        "source_id": _clean_text(candidate.get("source_id")),
         "engine": candidate.get("engine", ""),
         "title": _clean_text(candidate.get("title")),
         "url": _clean_text(candidate.get("url")),
+        "domain": _hostname(candidate.get("url", "")),
         "author": _clean_text(candidate.get("author")),
         "publication": _clean_text(candidate.get("publication")),
         "date": _clean_text(candidate.get("published")),
         "score": round(float(candidate.get("score", 0.0)), 2),
+        "overall_score": round(float(candidate.get("score", 0.0)), 3),
+        "topical_fit_score": round(float(candidate.get("topical_fit_score", 0.0)), 3),
+        "quote_strength_score": round(float(candidate.get("quote_strength_score", 0.0)), 3),
+        "credibility_score": round(float(candidate.get("credibility_score", 0.0)), 3),
+        "paper_score": round(float(candidate.get("paper_score", 0.0)), 3),
+        "credibility_notes": _clean_text(candidate.get("credibility_notes")),
         "content_type": _clean_text(candidate.get("content_type")),
         "byte_count": int(candidate.get("byte_count", 0) or 0),
+        "source_class": _clean_text(candidate.get("source_class")),
+        "paper_verified": bool(candidate.get("paper_verified")),
+        "paper_confidence": round(float(candidate.get("paper_confidence", 0.0)), 3),
+        "doi": _clean_text(candidate.get("doi")),
+        "pdf_url": _clean_text(candidate.get("pdf_url")),
+        "paper_signals": _coerce_string_list(candidate.get("paper_signals")),
+        "summary_signals": _coerce_string_list(candidate.get("summary_signals")),
         "fetch_error": _clean_text(candidate.get("fetch_error")),
         "snippet": _candidate_snippet(candidate),
     }
+
+
+def _client_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **_public_candidate(candidate),
+        "text": _truncate(_clean_text(candidate.get("text")), min(MODEL_INPUT_MAX_CHARS, 12000)),
+        "description": _clean_text(candidate.get("description")),
+        "published": _clean_text(candidate.get("published")),
+        "seed_query": _clean_text(candidate.get("seed_query")),
+        "seed_domain": _clean_text(candidate.get("seed_domain")),
+        "pool_bucket": _clean_text(candidate.get("pool_bucket")),
+    }
+
+
+def _candidate_pool_bucket(candidate: dict[str, Any]) -> str:
+    source_class = _clean_text(candidate.get("source_class"))
+    if bool(candidate.get("paper_verified")) or source_class in {"peer_reviewed", "preprint", "working_paper"}:
+        return "academic"
+    if source_class == "think_tank":
+        return "think_tank"
+    return "general_web"
+
+
+def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[float, float, float, float]:
+    return (
+        float(candidate.get("score", 0.0) or 0.0),
+        float(candidate.get("paper_confidence", 0.0) or 0.0),
+        float(candidate.get("quote_strength_score", 0.0) or 0.0),
+        float(candidate.get("credibility_score", 0.0) or 0.0),
+    )
+
+
+def _select_mixed_candidate_pool(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    ranked = sorted(candidates, key=_candidate_sort_key, reverse=True)
+    selected: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    seen_titles: set[str] = set()
+
+    def take_from_bucket(bucket_name: str, limit: int) -> None:
+        for candidate in ranked:
+            if len([item for item in selected if item.get("pool_bucket") == bucket_name]) >= limit:
+                break
+            if candidate.get("pool_bucket") != bucket_name:
+                continue
+            url_key = _normalize_web_url(candidate.get("url", ""))
+            title_key = _normalized_title_key(candidate.get("title", ""))
+            if url_key and url_key in seen_urls:
+                continue
+            if title_key and title_key in seen_titles:
+                continue
+            if url_key:
+                seen_urls.add(url_key)
+            if title_key:
+                seen_titles.add(title_key)
+            selected.append(candidate)
+
+    take_from_bucket("academic", ACADEMIC_BUCKET_TARGET)
+    take_from_bucket("think_tank", THINK_TANK_BUCKET_TARGET)
+    take_from_bucket("general_web", WEB_BUCKET_TARGET)
+
+    for candidate in ranked:
+        if len(selected) >= MIXED_SOURCE_POOL_SIZE:
+            break
+        url_key = _normalize_web_url(candidate.get("url", ""))
+        title_key = _normalized_title_key(candidate.get("title", ""))
+        if url_key and url_key in seen_urls:
+            continue
+        if title_key and title_key in seen_titles:
+            continue
+        if url_key:
+            seen_urls.add(url_key)
+        if title_key:
+            seen_titles.add(title_key)
+        selected.append(candidate)
+
+    return [{**item, "source_id": f"S{index + 1}", "index": index + 1} for index, item in enumerate(selected[:MIXED_SOURCE_POOL_SIZE])]
 
 
 def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
     article_text = _clean_text(payload.get("article_text"))
     source_url = _normalize_web_url(_clean_text(payload.get("source_url")))
     draft_tag = _clean_text(payload.get("draft_tag"))
-    query = _research_query(payload)
+    semantic_enabled = _parse_bool(payload.get("semantic_search_enabled"), SEMANTIC_SEARCH_DEFAULT)
+    query_pack, search_mode, query_refinement_used, query_refinement_provider = _refine_query_pack(payload)
+    query = _clean_text(query_pack.get("literal_query")) or _research_query(payload)
     missing_fields = _missing_source_fields(payload)
     can_research = bool(draft_tag or source_url)
+    blocked_domains = _parse_domain_blacklist(payload.get("domain_blacklist"))
+    executed_queries: list[dict[str, Any]] = []
+    intent_phrase = _clean_text(query_pack.get("intent_claim")) or draft_tag or query
+    query_terms = _score_terms(" ".join([intent_phrase, " ".join(_coerce_string_list(query_pack.get("must_have_terms")))]))
+
+    if source_url and _domain_is_blocked(source_url, blocked_domains):
+        raise ValueError(f"source_url is blocked by the current domain blacklist: {source_url}")
 
     if article_text and (not missing_fields or not can_research):
+        provided_selected = {
+            "source_id": _clean_text(payload.get("source_id")) or "S1",
+            "title": _clean_text(payload.get("source_title")),
+            "publication": _clean_text(payload.get("source_publication")),
+            "author": _clean_text(payload.get("source_author")),
+            "published": _clean_text(payload.get("source_date")),
+            "url": source_url or _clean_text(payload.get("source_url")),
+            "text": article_text,
+            "description": "",
+            "engine": "provided",
+        }
+        provided_selected.update(_classify_candidate(provided_selected))
+        provided_selected.update(_candidate_metrics(provided_selected, query_terms, intent_phrase.lower()))
         return {
             "used": False,
             "query": query,
-            "sources": [],
+            "search_mode": search_mode,
+            "query_pack": query_pack,
+            "query_refinement_used": query_refinement_used,
+            "query_refinement_provider": query_refinement_provider,
+            "executed_queries": executed_queries,
+            "sources": [_public_candidate(provided_selected)],
+            "candidates": [_client_candidate(provided_selected)],
             "selected": {
-                "title": _clean_text(payload.get("source_title")),
-                "publication": _clean_text(payload.get("source_publication")),
-                "author": _clean_text(payload.get("source_author")),
-                "date": _clean_text(payload.get("source_date")),
-                "url": source_url or _clean_text(payload.get("source_url")),
-                "text": _truncate(article_text, 1200),
-                "engine": "provided",
+                **_public_candidate(provided_selected),
+                "text": _truncate(article_text, 4000),
             },
             "article_text": article_text,
-            "_candidates": [],
+            "_candidates": [provided_selected],
             "missing_fields": missing_fields,
+            "blocked_domains": blocked_domains,
         }
 
-    discovered: list[dict[str, Any]] = []
+    discovered_by_bucket = {"academic": [], "think_tank": [], "general_web": []}
+    prefetched_candidates: list[dict[str, Any]] = []
+    if article_text:
+        provided_candidate = {
+            "engine": "provided_text",
+            "title": _clean_text(payload.get("source_title")),
+            "publication": _clean_text(payload.get("source_publication")),
+            "author": _clean_text(payload.get("source_author")),
+            "published": _clean_text(payload.get("source_date")),
+            "url": source_url,
+            "text": article_text,
+            "description": "",
+            "content_type": "text/plain",
+            "byte_count": len(article_text.encode("utf-8")),
+        }
+        provided_candidate.update(_classify_candidate(provided_candidate))
+        provided_candidate["pool_bucket"] = _candidate_pool_bucket(provided_candidate)
+        prefetched_candidates.append(provided_candidate)
     if source_url:
-        discovered.append(
+        discovered_by_bucket["general_web"].append(
             {
                 "engine": "provided",
                 "title": _clean_text(payload.get("source_title")),
                 "url": source_url,
                 "query": query,
+                "seed_query": query,
+                "discovered_stage": "provided",
             }
         )
 
-    if query:
-        discovered.extend(_search_web(query, SEARCH_RESULTS))
+    if query or semantic_enabled:
+        discovered_search, executed_queries = _collect_discovered_sources(query_pack, semantic_enabled)
+        for bucket_name, items in discovered_search.items():
+            discovered_by_bucket[bucket_name].extend(items)
     elif source_url:
-        discovered = discovered[:1]
+        pass
     else:
         raise ValueError("article_text, source_url, or draft_tag is required")
 
-    fetched: list[dict[str, Any]] = []
+    discovered: list[dict[str, Any]] = []
+    for bucket_name, items in discovered_by_bucket.items():
+        for item in items:
+            if _domain_is_blocked(item.get("url", ""), blocked_domains):
+                continue
+            discovered.append({**item, "discovered_bucket": bucket_name})
+
+    fetched: list[dict[str, Any]] = list(prefetched_candidates)
     seen_urls: set[str] = set()
+    seen_titles: set[str] = set()
+    for item in prefetched_candidates:
+        url_key = _normalize_web_url(item.get("url", ""))
+        title_key = _normalized_title_key(item.get("title", ""))
+        if url_key:
+            seen_urls.add(url_key)
+        if title_key:
+            seen_titles.add(title_key)
     for item in discovered:
         url = _normalize_web_url(item.get("url", ""))
         if not url or url in seen_urls:
             continue
+        title_key = _normalized_title_key(item.get("title", ""))
+        if title_key and title_key in seen_titles:
+            continue
         seen_urls.add(url)
+        if title_key:
+            seen_titles.add(title_key)
         try:
             fetched_item = _fetch_article(url)
         except Exception as exc:
@@ -1099,35 +2013,46 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
                 "text": "",
                 "content_type": "",
             }
+            item.update(_classify_candidate(item))
+            item["pool_bucket"] = _candidate_pool_bucket(item)
             fetched.append(item)
             continue
         item = {
             **item,
             **fetched_item,
         }
+        item.update(_classify_candidate(item))
+        item["pool_bucket"] = _candidate_pool_bucket(item)
         fetched.append(item)
 
     if not fetched:
         raise RuntimeError("No fetchable sources found")
 
-    query_terms = _score_terms(query or draft_tag)
-    phrase = (draft_tag or query).lower()
+    phrase = intent_phrase.lower()
     for item in fetched:
-        item["score"] = _candidate_score(item, query_terms, phrase)
-    selected = max(fetched, key=lambda item: item.get("score", -999))
+        item.update(_candidate_metrics(item, query_terms, phrase))
+    mixed_pool = _select_mixed_candidate_pool(fetched)
+    if not mixed_pool:
+        raise RuntimeError("No usable candidate sources found after filtering")
+    selected = mixed_pool[0]
     selected_text = _clean_text(selected.get("text"))
     if not selected_text and selected.get("description"):
         selected_text = _clean_text(selected.get("description"))
-    if not selected_text and draft_tag:
-        selected_text = draft_tag
+    if not selected_text and intent_phrase:
+        selected_text = intent_phrase
 
-    ranked = sorted(fetched, key=lambda item: item.get("score", -999), reverse=True)
     return {
         "used": True,
         "query": query,
-        "sources": [_public_candidate({**item, "index": index + 1}) for index, item in enumerate(ranked[:SEARCH_RESULTS])],
+        "search_mode": search_mode,
+        "query_pack": query_pack,
+        "query_refinement_used": query_refinement_used,
+        "query_refinement_provider": query_refinement_provider,
+        "executed_queries": executed_queries,
+        "sources": [_public_candidate(item) for item in mixed_pool],
+        "candidates": [_client_candidate(item) for item in mixed_pool],
         "selected": {
-            "index": 1,
+            **_public_candidate(selected),
             "engine": selected.get("engine", ""),
             "title": _clean_text(selected.get("title") or payload.get("source_title")),
             "publication": _clean_text(selected.get("publication") or payload.get("source_publication")),
@@ -1135,11 +2060,11 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
             "date": _clean_text(selected.get("published") or payload.get("source_date")),
             "url": _clean_text(selected.get("url") or source_url or payload.get("source_url")),
             "text": _truncate(selected_text, 4000),
-            "score": round(float(selected.get("score", 0.0)), 2),
         },
         "article_text": selected_text,
-        "_candidates": [{**item, "index": index + 1} for index, item in enumerate(ranked)],
+        "_candidates": mixed_pool,
         "missing_fields": missing_fields,
+        "blocked_domains": blocked_domains,
     }
 
 
@@ -1247,11 +2172,12 @@ def _build_fallback_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
             nearby.insert(0, sentences[idx - 1])
         if idx + 1 < len(sentences):
             nearby.append(sentences[idx + 1])
-        full_context = _truncate(next((para for para in paragraphs if sentence in para), " ".join(nearby)), 1400)
-        read_text = _truncate(sentence, 420)
-        highlighted_text = read_text
+        full_context = _truncate(next((para for para in paragraphs if sentence in para), " ".join(nearby)), 2200)
+        underlined_spans = _normalize_span_list([{"text": _truncate(sentence, 520), "reason": "Best fallback warrant from source text."}], full_context)
+        highlighted_spans = [dict(span) for span in underlined_spans[:1]]
+        highlighted_text = _span_text(highlighted_spans)
         tag_line = _truncate(
-            " - ".join(bit for bit in [resolution or "Debate card", f"Point {rank + 1}", emphasis] if bit),
+            _clean_text(payload.get("draft_tag")) or " - ".join(bit for bit in [resolution or "Debate card", f"Point {rank + 1}", emphasis] if bit),
             180,
         )
         short_citation = _build_short_citation(source)
@@ -1264,10 +2190,12 @@ def _build_fallback_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "cite_line": cite_line,
             "verbal_citation": _build_verbal_citation(source),
             "author_qualifications": _clean_text(source.get("author_qualifications")),
-            "read_text": read_text,
+            "underlined_spans": underlined_spans,
+            "highlighted_spans": highlighted_spans,
+            "underlined_text": _span_text(underlined_spans),
             "full_context": full_context,
-            "quoted_text": read_text,
-            "exact_excerpt": read_text,
+            "quoted_text": highlighted_text,
+            "exact_excerpt": highlighted_text,
             "highlighted_text": highlighted_text,
             "date_accessed": date_accessed,
             "source_url": _clean_text(source.get("url")),
@@ -1286,9 +2214,9 @@ def _build_fallback_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "title": tag_line,
             "tag": tag_line,
             "citation": full_citation,
-            "card_text": read_text,
+            "card_text": full_context or highlighted_text,
             "body": full_context,
-            "evidence": read_text,
+            "evidence": full_context or highlighted_text,
             "source": source,
             "excerpt": highlighted_text,
             "highlighted_excerpt": highlighted_text,
@@ -1297,11 +2225,13 @@ def _build_fallback_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
         cards.append(card)
 
     if not cards and article_text:
-        excerpt = _truncate(article_text, 500)
-        tag_line = _truncate(resolution or "Debate card", 180)
+        excerpt = _truncate(article_text, 900)
+        tag_line = _truncate(_clean_text(payload.get("draft_tag")) or resolution or "Debate card", 180)
         short_citation = _build_short_citation(source)
         full_citation = _build_full_citation(source, date_accessed)
         cite_line = _build_cite_line(short_citation, full_citation)
+        underlined_spans = _normalize_span_list([{"text": excerpt, "reason": "Fallback excerpt from source text."}], excerpt)
+        highlighted_spans = [dict(span) for span in underlined_spans[:1]]
         card = {
             "tag_line": tag_line,
             "short_citation": short_citation,
@@ -1309,11 +2239,13 @@ def _build_fallback_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "cite_line": cite_line,
             "verbal_citation": _build_verbal_citation(source),
             "author_qualifications": _clean_text(source.get("author_qualifications")),
-            "read_text": excerpt,
+            "underlined_spans": underlined_spans,
+            "highlighted_spans": highlighted_spans,
+            "underlined_text": _span_text(underlined_spans),
             "full_context": excerpt,
             "quoted_text": excerpt,
             "exact_excerpt": excerpt,
-            "highlighted_text": excerpt,
+            "highlighted_text": _span_text(highlighted_spans),
             "date_accessed": date_accessed,
             "source_url": _clean_text(source.get("url")),
             "claim": f"{emphasis or 'This card'} supports the {side} position.",
@@ -1415,6 +2347,7 @@ def _normalize_validation_meta(value: Any) -> dict[str, Any]:
     status = _clean_text(value.get("status") or value.get("result"))
     useful = value.get("useful")
     revised = value.get("revised")
+    passed = value.get("passed")
     confidence = value.get("confidence")
 
     normalized: dict[str, Any] = {}
@@ -1422,6 +2355,8 @@ def _normalize_validation_meta(value: Any) -> dict[str, Any]:
         normalized["useful"] = bool(useful)
     if revised is not None:
         normalized["revised"] = bool(revised)
+    if passed is not None:
+        normalized["passed"] = bool(passed)
     if notes:
         normalized["notes"] = notes
     if status:
@@ -1429,9 +2364,149 @@ def _normalize_validation_meta(value: Any) -> dict[str, Any]:
     issues = _normalize_validation_issues(value.get("issues") or value.get("problems") or value.get("concerns"))
     if issues:
         normalized["issues"] = issues
+    source_checks = _normalize_validation_issues(value.get("source_checks") or value.get("sourceChecks") or value.get("checks"))
+    if source_checks:
+        normalized["source_checks"] = source_checks
     if isinstance(confidence, (int, float)):
         normalized["confidence"] = confidence
+    for key in ("tag_fit", "span_grounding", "source_choice"):
+        detail = _clean_text(value.get(key))
+        if detail:
+            normalized[key] = detail
     return normalized
+
+
+def _merge_validation_meta(*values: Any) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    issue_bucket: list[str] = []
+    source_check_bucket: list[str] = []
+
+    for value in values:
+        candidate = _normalize_validation_meta(value)
+        if not candidate:
+            continue
+        for key in ("useful", "revised", "passed", "notes", "status", "confidence", "tag_fit", "span_grounding", "source_choice"):
+            if key in candidate:
+                merged[key] = candidate[key]
+        for item in candidate.get("issues", []):
+            cleaned = _clean_text(item)
+            if cleaned and cleaned not in issue_bucket:
+                issue_bucket.append(cleaned)
+        for item in candidate.get("source_checks", []):
+            cleaned = _clean_text(item)
+            if cleaned and cleaned not in source_check_bucket:
+                source_check_bucket.append(cleaned)
+
+    if issue_bucket:
+        merged["issues"] = issue_bucket
+    if source_check_bucket:
+        merged["source_checks"] = source_check_bucket
+    return merged
+
+
+def _normalize_space(text: str) -> str:
+    return re.sub(r"\s+", " ", _clean_text(text)).strip()
+
+
+def _token_overlap_ratio(left: str, right: str) -> float:
+    left_tokens = _score_terms(left)
+    right_tokens = _score_terms(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    overlap = left_tokens & right_tokens
+    return len(overlap) / max(1, len(left_tokens))
+
+
+def _build_source_grounding_validation(card: dict[str, Any], article_text: str) -> dict[str, Any]:
+    article_text = _clean_text(article_text)
+    normalized_article = _normalize_space(article_text)
+    full_context = _clean_text(card.get("full_context") or card.get("body"))
+    underlined_spans = _normalize_span_list(card.get("underlined_spans") or card.get("underlinedSpans"), full_context)
+    highlighted_spans = _normalize_span_list(card.get("highlighted_spans") or card.get("highlightedSpans"), full_context)
+    highlighted_text = _span_text(highlighted_spans) or _clean_text(card.get("highlighted_text") or card.get("excerpt"))
+
+    issues: list[str] = []
+    source_checks: list[str] = []
+    useful = True
+    passed = True
+
+    normalized_context = _normalize_space(full_context)
+    if underlined_spans:
+        bad_underlines = []
+        for span in underlined_spans:
+            span_text = _normalize_space(span.get("text"))
+            if normalized_article and span_text and span_text in normalized_article:
+                continue
+            bad_underlines.append(_clean_text(span.get("text")))
+        if bad_underlines:
+            useful = False
+            passed = False
+            issues.append("Some underlined spans do not map cleanly onto the source article.")
+        else:
+            source_checks.append("All underlined spans map directly onto the source article text.")
+    else:
+        useful = False
+        passed = False
+        issues.append("Card is missing underlined_spans.")
+
+    if full_context:
+        source_checks.append("Card includes full_context.")
+    else:
+        useful = False
+        passed = False
+        issues.append("Card is missing full_context.")
+
+    if highlighted_spans:
+        bad_highlights = []
+        if underlined_spans:
+            underlined_ranges = [
+                (span.get("start"), span.get("end"))
+                for span in underlined_spans
+                if isinstance(span.get("start"), int) and isinstance(span.get("end"), int)
+            ]
+        else:
+            underlined_ranges = []
+        for span in highlighted_spans:
+            span_text = _normalize_space(span.get("text"))
+            start = span.get("start")
+            end = span.get("end")
+            if normalized_context and span_text and span_text in normalized_context:
+                if underlined_ranges and isinstance(start, int) and isinstance(end, int):
+                    inside = any(isinstance(u_start, int) and isinstance(u_end, int) and u_start <= start and end <= u_end for u_start, u_end in underlined_ranges)
+                    if not inside:
+                        bad_highlights.append(_clean_text(span.get("text")))
+                continue
+            bad_highlights.append(_clean_text(span.get("text")))
+        if bad_highlights:
+            useful = False
+            passed = False
+            issues.append("Some highlighted spans are not grounded in full_context or are not inside underlined support.")
+        else:
+            source_checks.append("All highlighted spans appear inside full_context.")
+    elif highlighted_text:
+        normalized_highlight = _normalize_space(highlighted_text)
+        if normalized_highlight and normalized_highlight in normalized_context:
+            source_checks.append("highlighted_text appears inside the source context.")
+        else:
+            useful = False
+            passed = False
+            issues.append("highlighted_text is not grounded in the returned quote/context.")
+    else:
+        useful = False
+        passed = False
+        issues.append("Card is missing highlighted_spans.")
+
+    notes = "Source grounding checks passed." if not issues else "Source grounding checks found fidelity problems."
+    result: dict[str, Any] = {
+        "useful": useful,
+        "passed": passed,
+        "notes": notes,
+    }
+    if issues:
+        result["issues"] = issues
+    if source_checks:
+        result["source_checks"] = source_checks
+    return result
 
 
 def _extract_validation_meta(parsed: dict[str, Any]) -> dict[str, Any]:
@@ -1476,6 +2551,7 @@ def _validation_is_weak(validation: dict[str, Any] | None) -> bool:
             validation.get("notes"),
             validation.get("status"),
             " ".join(to_array(validation.get("issues"))),
+            " ".join(to_array(validation.get("source_checks"))),
         ]
     ).lower()
     weak_terms = [
@@ -1489,17 +2565,29 @@ def _validation_is_weak(validation: dict[str, Any] | None) -> bool:
         "bad source",
         "source weak",
         "needs better source",
+        "does not map cleanly",
+        "missing underlined_spans",
+        "missing highlighted_spans",
+        "missing full_context",
+        "not grounded",
     ]
     return any(term in text for term in weak_terms)
 
 
 def _build_source_selection_prompt(payload: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "task": "Choose the best sources for cutting one debate card.",
+        "task": "Choose the best source from a mixed candidate pool for cutting one debate card.",
         "requirements": [
             "Return strict JSON only.",
             "Rank the candidates by which source is most likely to produce a strong, specific, usable debate card.",
+            "Assume the candidate list is a deliberately mixed pool of academic, think-tank, and high-quality general-web sources.",
             "Prefer sources with clear, quotable evidence and a direct connection to the draft tag, resolution, side, and emphasis.",
+            "Use query_pack as the semantic research context. Choose the source that best proves the meaning of the tag, not merely the source that repeats the same surface words.",
+            "Separate source usefulness from source credibility.",
+            "Usefulness means the source contains precise, quotable evidence for the draft tag. Credibility means institutional or author reliability, recency, primary or academic status, and absence of obvious SEO, promo, or aggregator weakness.",
+            "Prefer verified papers when they directly support the claim, but do not force a paper choice if a think-tank or web source more directly proves the tag.",
+            "Reject summary pages about papers, prestige-only sources that are too generic, and sources that use similar words while proving a different claim.",
+            "Do not let generic domain authority beat topical usefulness if the more credible source does not actually prove the tag.",
             "Avoid ranking weak, generic, duplicated, or irrelevant sources highly.",
             "Return selected_indices as a ranked list of 1-based candidate indices.",
         ],
@@ -1508,15 +2596,31 @@ def _build_source_selection_prompt(payload: dict[str, Any], candidates: list[dic
             "resolution": _clean_text(payload.get("resolution")),
             "side": _normalize_side(_clean_text(payload.get("side"))),
             "emphasis": _clean_text(payload.get("emphasis")),
+            "search_mode": "semantic" if _parse_bool(payload.get("semantic_search_enabled"), SEMANTIC_SEARCH_DEFAULT) else "literal",
+            "query_pack": payload.get("query_pack") if isinstance(payload.get("query_pack"), dict) else {},
+            "domain_blacklist": _parse_domain_blacklist(payload.get("domain_blacklist")),
             "candidates": [
                 {
+                    "source_id": _clean_text(candidate.get("source_id") or f"S{index + 1}"),
                     "index": index + 1,
                     "title": _clean_text(candidate.get("title")),
                     "author": _clean_text(candidate.get("author")),
                     "publication": _clean_text(candidate.get("publication")),
                     "date": _clean_text(candidate.get("published")),
                     "url": _clean_text(candidate.get("url")),
-                    "heuristic_score": round(float(candidate.get("score", 0.0)), 2),
+                    "overall_score": round(float(candidate.get("score", 0.0)), 3),
+                    "topical_fit_score": round(float(candidate.get("topical_fit_score", 0.0)), 3),
+                    "quote_strength_score": round(float(candidate.get("quote_strength_score", 0.0)), 3),
+                    "credibility_score": round(float(candidate.get("credibility_score", 0.0)), 3),
+                    "paper_score": round(float(candidate.get("paper_score", 0.0)), 3),
+                    "credibility_notes": _clean_text(candidate.get("credibility_notes")),
+                    "source_class": _clean_text(candidate.get("source_class")),
+                    "paper_verified": bool(candidate.get("paper_verified")),
+                    "paper_confidence": round(float(candidate.get("paper_confidence", 0.0)), 3),
+                    "doi": _clean_text(candidate.get("doi")),
+                    "pdf_url": _clean_text(candidate.get("pdf_url")),
+                    "paper_signals": _coerce_string_list(candidate.get("paper_signals")),
+                    "summary_signals": _coerce_string_list(candidate.get("summary_signals")),
                     "snippet": _candidate_snippet(candidate),
                 }
                 for index, candidate in enumerate(candidates)
@@ -1525,14 +2629,38 @@ def _build_source_selection_prompt(payload: dict[str, Any], candidates: list[dic
         "output_schema": {
             "selected_indices": [1, 2, 3],
             "notes": "string",
+            "source_assessments": [
+                {
+                    "source_id": "string",
+                    "index": 1,
+                    "usefulness_score": "number",
+                    "credibility_score": "number",
+                    "quote_strength_score": "number",
+                    "topical_fit_score": "number",
+                    "paper_confidence": "number",
+                    "reason": "string",
+                    "risk": "string",
+                    "best_quote_hint": "string",
+                }
+            ],
         },
     }
 
 
 def _parse_selected_candidate_indices(parsed: dict[str, Any], total_candidates: int) -> list[int]:
-    raw_indices = parsed.get("selected_indices") or parsed.get("ranked_indices") or parsed.get("candidate_indices") or []
+    selection = parsed.get("selection") if isinstance(parsed.get("selection"), dict) else {}
+    zero_based = False
+    raw_indices = parsed.get("selected_indices") or parsed.get("ranked_indices") or parsed.get("candidate_indices") or selection.get("selected_indices") or []
+    if not raw_indices:
+        raw_indices = selection.get("ordered_indices") or selection.get("ranked_indices") or []
+        zero_based = bool(raw_indices)
     if not isinstance(raw_indices, list):
-        raw_indices = [parsed.get("selected_index")] if parsed.get("selected_index") is not None else []
+        raw_indices = [
+            parsed.get("selected_index")
+            if parsed.get("selected_index") is not None
+            else selection.get("best_index")
+        ]
+        zero_based = parsed.get("selected_index") is None and selection.get("best_index") is not None
 
     indices: list[int] = []
     for raw in raw_indices:
@@ -1540,6 +2668,8 @@ def _parse_selected_candidate_indices(parsed: dict[str, Any], total_candidates: 
             value = int(raw)
         except (TypeError, ValueError):
             continue
+        if zero_based and 0 <= value < total_candidates:
+            value += 1
         if 1 <= value <= total_candidates and value not in indices:
             indices.append(value)
     return indices
@@ -1567,6 +2697,7 @@ def _call_chat_completion_json(
                 },
             ],
             "temperature": 0.2,
+            "max_tokens": min(MODEL_OUTPUT_TOKENS, 2500),
         }
     ).encode("utf-8")
     headers = {
@@ -1600,7 +2731,7 @@ def _call_openai_json_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
             "model": os.getenv("OPENAI_MODEL", DEFAULT_MODEL),
             "input": json.dumps(prompt, ensure_ascii=True),
             "temperature": 0.2,
-            "max_output_tokens": 1800,
+            "max_output_tokens": min(MODEL_OUTPUT_TOKENS, 2500),
         }
     ).encode("utf-8")
     req = urllib.request.Request(
@@ -1711,18 +2842,32 @@ def _select_source_order_with_ai(provider: str, payload: dict[str, Any], candida
         "used_ai_selection": True,
         "selection_notes": _clean_text(parsed.get("notes") or parsed.get("reasoning")),
         "selected_indices": selected_indices,
+        "source_assessments": parsed.get("source_assessments") if isinstance(parsed.get("source_assessments"), list) else [],
     }
 
 
-def _default_validation_meta(*, notes: str, revised: bool, useful: bool = True, issues: list[str] | None = None) -> dict[str, Any]:
+def _default_validation_meta(
+    *,
+    notes: str,
+    revised: bool,
+    useful: bool = True,
+    passed: bool | None = None,
+    issues: list[str] | None = None,
+    source_checks: list[str] | None = None,
+) -> dict[str, Any]:
     meta = {
         "useful": useful,
         "revised": revised,
         "notes": _clean_text(notes),
     }
+    if passed is not None:
+        meta["passed"] = passed
     normalized_issues = [issue for issue in (issues or []) if _clean_text(issue)]
     if normalized_issues:
         meta["issues"] = normalized_issues
+    normalized_source_checks = [check for check in (source_checks or []) if _clean_text(check)]
+    if normalized_source_checks:
+        meta["source_checks"] = normalized_source_checks
     return meta
 
 
@@ -1771,6 +2916,7 @@ def _call_chat_completion_provider(
             },
         ],
         "temperature": 0.2,
+        "max_tokens": MODEL_OUTPUT_TOKENS,
     }
     data = json.dumps(request_body).encode("utf-8")
     headers = {
@@ -1823,7 +2969,7 @@ def _call_openai(payload: dict[str, Any], *, stage: str = "cut", candidate_card:
         "model": os.getenv("OPENAI_MODEL", DEFAULT_MODEL),
         "input": json.dumps(prompt, ensure_ascii=True),
         "temperature": 0.2,
-        "max_output_tokens": 2500,
+        "max_output_tokens": MODEL_OUTPUT_TOKENS,
     }
     data = json.dumps(request_body).encode("utf-8")
     req = urllib.request.Request(
@@ -1878,6 +3024,7 @@ def _call_ollama(payload: dict[str, Any], *, stage: str = "cut", candidate_card:
         ],
         "options": {
             "temperature": 0.2,
+            "num_predict": MODEL_OUTPUT_TOKENS,
         },
     }
     data = json.dumps(request_body).encode("utf-8")
@@ -1960,23 +3107,39 @@ def _call_chatgpt_bridge(
 
 def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
     research_error = ""
-    try:
-        research_meta = _research_sources(payload)
-    except Exception as exc:
-        research_error = str(exc)
-        research_meta = {
-            "used": False,
-            "query": _research_query(payload),
-            "sources": [],
-            "selected": {},
-            "article_text": _clean_text(payload.get("article_text") or payload.get("draft_tag") or payload.get("resolution")),
-            "error": research_error,
-            "_candidates": [],
-        }
+    supplied_research = payload.get("research_meta") if isinstance(payload.get("research_meta"), dict) else {}
+    if supplied_research:
+        research_meta = dict(supplied_research)
+        research_error = _clean_text(research_meta.get("error"))
+    else:
+        try:
+            research_meta = _research_sources(payload)
+        except Exception as exc:
+            research_error = str(exc)
+            query_pack, search_mode, query_refinement_used, query_refinement_provider = _refine_query_pack(payload)
+            research_meta = {
+                "used": False,
+                "query": _clean_text(query_pack.get("literal_query")) or _research_query(payload),
+                "search_mode": search_mode,
+                "query_pack": query_pack,
+                "query_refinement_used": query_refinement_used,
+                "query_refinement_provider": query_refinement_provider,
+                "executed_queries": [],
+                "sources": [],
+                "selected": {},
+                "article_text": _clean_text(payload.get("article_text") or payload.get("draft_tag") or payload.get("resolution")),
+                "error": research_error,
+                "_candidates": [],
+                "candidates": [],
+            }
 
-    candidate_pool = list(research_meta.pop("_candidates", []) or [])
+    candidate_pool = list(research_meta.pop("_candidates", []) or research_meta.get("candidates") or [])
     public_research_meta = dict(research_meta)
     payload = dict(payload)
+    if not isinstance(payload.get("query_pack"), dict) or not payload.get("query_pack"):
+        payload["query_pack"] = research_meta.get("query_pack") if isinstance(research_meta.get("query_pack"), dict) else {}
+    if payload.get("semantic_search_enabled") is None:
+        payload["semantic_search_enabled"] = _clean_text(research_meta.get("search_mode")).lower() != "literal"
     payload["article_text"] = _clean_text(research_meta.get("article_text") or payload.get("article_text"))
     selected_source = research_meta.get("selected") if isinstance(research_meta.get("selected"), dict) else {}
     if selected_source:
@@ -1997,6 +3160,7 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
         "desired_cards": _normalize_desired_cards(payload.get("desired_cards")),
         "emphasis": _clean_text(payload.get("emphasis")),
         "draft_tag": _clean_text(payload.get("draft_tag")),
+        "domain_blacklist": _parse_domain_blacklist(payload.get("domain_blacklist")),
     }
     if research_error:
         base_meta["research_error"] = research_error
@@ -2042,14 +3206,25 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                 attempt_payload["source_date"] = _clean_text(candidate.get("published")) or attempt_payload.get("source_date", "")
                 attempt_payload["source_publication"] = _clean_text(candidate.get("publication")) or attempt_payload.get("source_publication", "")
                 attempt_payload["source_url"] = _clean_text(candidate.get("url")) or attempt_payload.get("source_url", "")
+                attempt_payload["source_id"] = _clean_text(candidate.get("source_id") or f"S{attempt_index}")
+                attempt_payload["credibility_score"] = float(candidate.get("credibility_score", 0.0)) if isinstance(candidate.get("credibility_score"), (int, float)) else 0.0
+                attempt_payload["credibility_notes"] = _clean_text(candidate.get("credibility_notes"))
+                attempt_payload["candidate_sources"] = ordered_candidates[: min(MIXED_SOURCE_POOL_SIZE, len(ordered_candidates))]
+                attempt_payload["source_selection"] = {
+                    **selection_meta,
+                    "current_attempt_index": attempt_index,
+                    "current_source_id": _clean_text(candidate.get("source_id") or f"S{attempt_index}"),
+                }
 
                 cut_result = _call_provider_stage(provider, attempt_payload, stage="cut")
                 final_card = cut_result["cards"][0]
                 validation_completed = False
                 validation_errors: list[str] = []
-                validation_meta = _extract_validation_meta({"cards": cut_result["cards"]}) or _default_validation_meta(
-                    notes="Initial cut completed; validation pass did not return notes yet.",
+                validation_meta = _default_validation_meta(
+                    notes="Awaiting separate validation call.",
                     revised=False,
+                    useful=True,
+                    passed=True,
                 )
 
                 try:
@@ -2061,25 +3236,31 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                     )
                     final_card = validation_result["cards"][0]
                     validation_completed = True
-                    validation_meta = validation_result.get("validation") or _extract_validation_meta({"cards": validation_result["cards"]})
+                    validation_meta = validation_result.get("validation") or _extract_validation_meta(validation_result)
                     revised = final_card.get("formatted_card") != cut_result["cards"][0].get("formatted_card")
                     if not validation_meta:
                         validation_meta = _default_validation_meta(
                             notes="Validation pass completed without explicit notes.",
                             revised=revised,
+                            useful=True,
+                            passed=True,
                         )
                     else:
                         validation_meta.setdefault("revised", revised)
                         validation_meta.setdefault("useful", True)
+                        validation_meta.setdefault("passed", True)
                 except Exception as validation_exc:
                     validation_errors.append(f"{provider} validate: {validation_exc}")
                     validation_meta = _default_validation_meta(
                         notes=f"Validation pass failed: {validation_exc}",
                         revised=False,
                         useful=False,
+                        passed=False,
                         issues=["Returning the initial cut because the validation pass failed."],
                     )
 
+                grounding_meta = _build_source_grounding_validation(final_card, attempt_payload.get("article_text", ""))
+                validation_meta = _merge_validation_meta(validation_meta, grounding_meta)
                 final_card["validation"] = validation_meta
                 if _validation_is_weak(validation_meta):
                     note = _clean_text(validation_meta.get("notes")) or "Validation marked the card as not useful."
@@ -2103,12 +3284,16 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                                 "author": _clean_text(candidate.get("author")) or attempt_payload.get("source_author", ""),
                                 "date": _clean_text(candidate.get("published")) or attempt_payload.get("source_date", ""),
                                 "url": _clean_text(candidate.get("url")) or attempt_payload.get("source_url", ""),
+                                "source_id": _clean_text(candidate.get("source_id") or f"S{attempt_index}"),
+                                "credibility_score": round(float(candidate.get("credibility_score", 0.0)), 3),
+                                "credibility_notes": _clean_text(candidate.get("credibility_notes")),
                                 "text": _truncate(attempt_text, 4000),
                             },
                             "source_selection": selection_meta,
                         },
                         "validation_ran": True,
                         "validation_completed": validation_completed,
+                        "validation_separate_call": True,
                         "validation_provider": provider,
                         "validation": validation_meta,
                         "source_attempts": attempt_index,
@@ -2128,6 +3313,8 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
     fallback_validation = _default_validation_meta(
         notes="Fallback cutter used a heuristic validation pass.",
         revised=False,
+        useful=True,
+        passed=True,
     )
     for card in cards:
         card["validation"] = fallback_validation
@@ -2150,6 +3337,328 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
             "validation": fallback_validation,
         },
     }
+
+
+def _parse_queue_tags(value: Any) -> list[str]:
+    if isinstance(value, list):
+        raw_items = value
+    else:
+        raw_items = re.split(r"[\r\n]+", _clean_text(value))
+
+    tags: list[str] = []
+    for raw in raw_items:
+        tag = _clean_text(raw)
+        if tag and tag not in tags:
+            tags.append(tag)
+        if len(tags) >= MAX_QUEUE_TAGS:
+            break
+    return tags
+
+
+def _queue_cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
+    tags = _parse_queue_tags(payload.get("draft_tags") or payload.get("queue_tags") or payload.get("tags"))
+    if not tags:
+        raise ValueError("draft_tags is required for queue cuts")
+
+    results: list[dict[str, Any]] = []
+    saved_cards: list[dict[str, Any]] = []
+    for index, tag in enumerate(tags, start=1):
+        item_payload = dict(payload)
+        item_payload["draft_tag"] = tag
+        item_payload["prior_cards"] = list(saved_cards)
+        try:
+            result = _cut_cards(item_payload)
+            cards = result.get("cards") if isinstance(result.get("cards"), list) else []
+            if cards:
+                saved_cards.extend(card for card in cards if isinstance(card, dict))
+            result["queue_index"] = index
+            result["draft_tag"] = tag
+            results.append(result)
+        except Exception as exc:
+            results.append(
+                {
+                    "ok": False,
+                    "queue_index": index,
+                    "draft_tag": tag,
+                    "error": str(exc),
+                    "cards": [],
+                }
+            )
+
+    return {
+        "ok": True,
+        "results": results,
+        "cards": [item["cards"][0] for item in results if item.get("ok") and item.get("cards")],
+        "meta": {
+            "queue_count": len(tags),
+            "completed_count": sum(1 for item in results if item.get("ok") and item.get("cards")),
+            "failed_count": sum(1 for item in results if not item.get("ok")),
+        },
+    }
+
+
+def _xml_text(text: str) -> str:
+    return escape(text, {'"': "&quot;"})
+
+
+def _slugify_filename(text: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", _clean_text(text)).strip("-._")
+    return slug or "debate-cards"
+
+
+def _w_run(
+    text: str,
+    *,
+    bold: bool = False,
+    underline: bool = False,
+    highlight: str = "",
+    color: str = "",
+) -> str:
+    cleaned = text or ""
+    if not cleaned:
+        return ""
+    props = ['<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>']
+    if bold:
+        props.append("<w:b/>")
+    if underline:
+        props.append('<w:u w:val="single"/>')
+    if highlight:
+        props.append(f'<w:highlight w:val="{_xml_text(highlight)}"/>')
+    if color:
+        props.append(f'<w:color w:val="{_xml_text(color)}"/>')
+    prop_xml = f"<w:rPr>{''.join(props)}</w:rPr>" if props else ""
+    return f'<w:r>{prop_xml}<w:t xml:space="preserve">{_xml_text(cleaned)}</w:t></w:r>'
+
+
+def _w_paragraph(
+    runs: list[str],
+    *,
+    style: str = "",
+    spacing_before: int = 0,
+    spacing_after: int = 120,
+    keep_next: bool = False,
+) -> str:
+    paragraph_props: list[str] = []
+    if style:
+        paragraph_props.append(f'<w:pStyle w:val="{_xml_text(style)}"/>')
+    paragraph_props.append(f'<w:spacing w:before="{spacing_before}" w:after="{spacing_after}" w:line="276" w:lineRule="auto"/>')
+    if keep_next:
+        paragraph_props.append("<w:keepNext/>")
+    prop_xml = f"<w:pPr>{''.join(paragraph_props)}</w:pPr>" if paragraph_props else ""
+    body_xml = "".join(run for run in runs if run) or _w_run("")
+    return f"<w:p>{prop_xml}{body_xml}</w:p>"
+
+
+def _build_runs_from_spans(full_context: str, underlined_spans: list[dict[str, Any]], highlighted_spans: list[dict[str, Any]]) -> tuple[list[str], bool]:
+    full_context = _clean_text(full_context)
+    if not full_context:
+        fallback_text = _span_text(highlighted_spans) or _span_text(underlined_spans)
+        if not fallback_text:
+            return [], False
+        return [_w_run(fallback_text, bold=bool(highlighted_spans), underline=True, highlight="cyan" if highlighted_spans else "")], False
+
+    underline_marks = [False] * len(full_context)
+    highlight_marks = [False] * len(full_context)
+    found_any = False
+
+    for span in underlined_spans:
+        start = span.get("start")
+        end = span.get("end")
+        if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(full_context):
+            found_any = True
+            for index in range(start, end):
+                underline_marks[index] = True
+
+    for span in highlighted_spans:
+        start = span.get("start")
+        end = span.get("end")
+        if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(full_context):
+            found_any = True
+            for index in range(start, end):
+                underline_marks[index] = True
+                highlight_marks[index] = True
+
+    if not found_any:
+        fallback_text = _span_text(highlighted_spans) or _span_text(underlined_spans)
+        return [_w_run(full_context)], bool(fallback_text and fallback_text != full_context)
+
+    runs: list[str] = []
+    chunk: list[str] = []
+    current_state: tuple[bool, bool] | None = None
+
+    for index, char in enumerate(full_context):
+        state = (underline_marks[index], highlight_marks[index])
+        if current_state is None:
+            current_state = state
+        if state != current_state:
+            runs.append(
+                _w_run(
+                    "".join(chunk),
+                    underline=current_state[0],
+                    highlight="cyan" if current_state[1] else "",
+                    bold=current_state[1],
+                )
+            )
+            chunk = [char]
+            current_state = state
+        else:
+            chunk.append(char)
+
+    if chunk and current_state is not None:
+        runs.append(
+            _w_run(
+                "".join(chunk),
+                underline=current_state[0],
+                highlight="cyan" if current_state[1] else "",
+                bold=current_state[1],
+            )
+        )
+    return runs, False
+
+
+def _build_docx_card_blocks(card: dict[str, Any]) -> list[str]:
+    tag_line = _clean_text(card.get("tag_line") or card.get("title"))
+    cite_line = _clean_text(card.get("cite_line") or _build_cite_line(_clean_text(card.get("short_citation")), _clean_text(card.get("full_citation") or card.get("citation"))))
+    full_context = _clean_text(card.get("full_context") or card.get("body"))
+    underlined_spans = _normalize_span_list(card.get("underlined_spans") or card.get("underlinedSpans"), full_context)
+    highlighted_spans = _normalize_span_list(card.get("highlighted_spans") or card.get("highlightedSpans"), full_context)
+
+    blocks: list[str] = []
+    if tag_line:
+        blocks.append(_w_paragraph([_w_run(tag_line)], style="Heading4", spacing_before=240, spacing_after=40, keep_next=True))
+    if cite_line:
+        blocks.append(_w_paragraph([_w_run(cite_line)], spacing_after=40, keep_next=True))
+
+    evidence_runs, needs_read_paragraph = _build_runs_from_spans(full_context, underlined_spans, highlighted_spans)
+    if evidence_runs:
+        blocks.append(_w_paragraph(evidence_runs, spacing_after=80))
+    if needs_read_paragraph:
+        blocks.append(
+            _w_paragraph(
+                [_w_run("[Highlighted read] ", bold=True), _w_run(_span_text(highlighted_spans) or _span_text(underlined_spans), bold=True, underline=True, highlight="cyan")],
+                spacing_after=120,
+            )
+        )
+    blocks.append(_w_paragraph([], spacing_after=140))
+    return blocks
+
+
+def _build_docx_bytes(cards: list[dict[str, Any]], title: str) -> bytes:
+    document_body = "".join(
+        block
+        for card in cards
+        if isinstance(card, dict)
+        for block in _build_docx_card_blocks(card)
+    )
+    if not document_body:
+        raise ValueError("At least one card is required to export a .docx file")
+
+    document_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" mc:Ignorable="w14 w15">
+  <w:body>
+    {document_body}
+    <w:sectPr>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="900" w:right="900" w:bottom="900" w:left="900" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:cols w:space="720"/>
+      <w:docGrid w:linePitch="360"/>
+    </w:sectPr>
+  </w:body>
+</w:document>'''
+
+    styles_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault>
+      <w:rPr>
+        <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>
+        <w:sz w:val="22"/>
+        <w:szCs w:val="22"/>
+      </w:rPr>
+    </w:rPrDefault>
+    <w:pPrDefault>
+      <w:pPr>
+        <w:spacing w:after="120" w:line="276" w:lineRule="auto"/>
+      </w:pPr>
+    </w:pPrDefault>
+  </w:docDefaults>
+  <w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+    <w:name w:val="Normal"/>
+    <w:qFormat/>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="Heading4">
+    <w:name w:val="heading 4"/>
+    <w:basedOn w:val="Normal"/>
+    <w:next w:val="Normal"/>
+    <w:qFormat/>
+    <w:pPr>
+      <w:spacing w:before="240" w:after="40"/>
+    </w:pPr>
+    <w:rPr>
+      <w:b/>
+      <w:sz w:val="22"/>
+      <w:szCs w:val="22"/>
+      <w:color w:val="111111"/>
+    </w:rPr>
+  </w:style>
+</w:styles>'''
+
+    content_types_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+</Types>'''
+
+    package_rels_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>'''
+
+    document_rels_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>'''
+
+    core_xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>{_xml_text(title)}</dc:title>
+  <dc:creator>AI Debate Card Cutter</dc:creator>
+  <cp:lastModifiedBy>AI Debate Card Cutter</cp:lastModifiedBy>
+  <dcterms:created xsi:type="dcterms:W3CDTF">{date.today().isoformat()}T00:00:00Z</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">{date.today().isoformat()}T00:00:00Z</dcterms:modified>
+</cp:coreProperties>'''
+
+    app_xml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+  <Application>AI Debate Card Cutter</Application>
+</Properties>'''
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as docx:
+        docx.writestr("[Content_Types].xml", content_types_xml)
+        docx.writestr("_rels/.rels", package_rels_xml)
+        docx.writestr("word/document.xml", document_xml)
+        docx.writestr("word/_rels/document.xml.rels", document_rels_xml)
+        docx.writestr("word/styles.xml", styles_xml)
+        docx.writestr("docProps/core.xml", core_xml)
+        docx.writestr("docProps/app.xml", app_xml)
+    return buffer.getvalue()
+
+
+def _export_docx(payload: dict[str, Any]) -> tuple[bytes, str]:
+    cards = [card for card in to_array(payload.get("cards")) if isinstance(card, dict)]
+    if not cards:
+        raise ValueError("cards is required for .docx export")
+    normalized_cards = _normalize_model_cards(cards, len(cards))
+    title = _clean_text(payload.get("title") or payload.get("draft_tag") or normalized_cards[0].get("tag_line") or "debate-cards")
+    filename = f"{_slugify_filename(title)}.verbatim.docx"
+    return _build_docx_bytes(normalized_cards, title), filename
 
 
 class DebateCardHandler(SimpleHTTPRequestHandler):
@@ -2183,6 +3692,20 @@ class DebateCardHandler(SimpleHTTPRequestHandler):
                 research = dict(_research_sources(payload))
                 research.pop("_candidates", None)
                 _json_response(self, HTTPStatus.OK, {"ok": True, "research": research})
+                return
+            if self.path == "/api/queue":
+                result = _queue_cut_cards(payload)
+                _json_response(self, HTTPStatus.OK, result)
+                return
+            if self.path == "/api/export/docx":
+                body, filename = _export_docx(payload)
+                _binary_response(
+                    self,
+                    HTTPStatus.OK,
+                    body,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    filename=filename,
+                )
                 return
             if self.path != "/api/cut":
                 _json_response(self, HTTPStatus.NOT_FOUND, {"ok": False, "error": "Not found"})
