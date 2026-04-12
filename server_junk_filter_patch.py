@@ -151,22 +151,7 @@ THINK_TANK_SEARCH_DOMAINS = [
 ]
 
 SEARCH_QUERY_NEGATIVE_TERMS = [
-    "dictionary",
-    "definition",
-    "meaning",
-    "prefix",
-    "hyphen",
-    "tv",
-    "television",
-    "episode",
-    "episodes",
-    "therapist",
-    "psychologist",
-    "directory",
-    "login",
-    "support",
-    "tax",
-    "software",
+    "definition"
 ]
 
 AUTO_EXCLUDED_HOST_SNIPPETS = (
