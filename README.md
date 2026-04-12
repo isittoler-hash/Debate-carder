@@ -373,7 +373,8 @@ Notes:
 Use this when you want a native Bedrock model path instead of an OpenAI-compatible proxy.
 
 ```dotenv
-BEDROCK_MODEL=meta.llama4-scout-17b-instruct-v1:0
+BEDROCK_MODEL=us.meta.llama4-scout-17b-instruct-v1:0
+BEDROCK_INFERENCE_PROFILE=
 BEDROCK_REGION=us-west-2
 BEDROCK_API_KEY=your-bedrock-key-if-needed
 AWS_BEARER_TOKEN_BEDROCK=your-bearer-token-if-needed
@@ -385,7 +386,8 @@ Notes:
 - The provider label is `bedrock`.
 - Bedrock uses the Converse API path, not OpenAI-compatible chat completions.
 - `BEDROCK_BASE_URL` is optional and only needed if you are pointing at a custom Bedrock-compatible gateway.
-- Use the concrete model id that is available in your AWS region/account. A common Meta Llama 4 Scout 17B Instruct id is `meta.llama4-scout-17b-instruct-v1:0`.
+- For Llama 4 Scout on Bedrock, prefer an inference profile ID such as `us.meta.llama4-scout-17b-instruct-v1:0` rather than the raw model ID.
+- `BEDROCK_INFERENCE_PROFILE` is optional if you want to separate the profile ID from `BEDROCK_MODEL`; either field can carry the inference profile.
 - `BEDROCK_API_KEY` or `AWS_BEARER_TOKEN_BEDROCK` can be used depending on how your Bedrock access is configured.
 
 ### Optional OpenAI fallback

@@ -52,6 +52,10 @@ _load_env_file(ROOT / ".env")
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "server.log"
+REQUEST_LOG_FILE = LOG_DIR / "requests.log"
+RESEARCH_LOG_FILE = LOG_DIR / "research.log"
+PROVIDER_LOG_FILE = LOG_DIR / "providers.log"
+ERROR_LOG_FILE = LOG_DIR / "errors.log"
 MAX_BODY_BYTES = 5 * 1024 * 1024
 DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.1")
 OPENAI_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1/responses")
@@ -64,6 +68,7 @@ OPENAI_COMPAT_API_KEY = os.getenv("OPENAI_COMPAT_API_KEY", "").strip()
 BEDROCK_BASE_URL = os.getenv("BEDROCK_BASE_URL", "").rstrip("/")
 BEDROCK_REGION = os.getenv("BEDROCK_REGION", "").strip()
 BEDROCK_MODEL = os.getenv("BEDROCK_MODEL", "").strip()
+BEDROCK_INFERENCE_PROFILE = os.getenv("BEDROCK_INFERENCE_PROFILE", "").strip()
 BEDROCK_API_KEY = os.getenv("BEDROCK_API_KEY", os.getenv("AWS_BEARER_TOKEN_BEDROCK", "")).strip()
 CHATGPT_BRIDGE_BASE_URL = os.getenv("CHATGPT_BRIDGE_BASE_URL", os.getenv("CHATGPT_BRIDGE_URL", "")).rstrip("/")
 CHATGPT_BRIDGE_PATH = os.getenv("CHATGPT_BRIDGE_PATH", "/chat/completions").strip() or "/chat/completions"
@@ -213,6 +218,19 @@ DEBATE_CARD_GUIDANCE = {
 }
 
 
+def _make_file_logger(name: str, path: Path) -> logging.Logger:
+    logger = logging.getLogger(name)
+    if logger.handlers:
+        return logger
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    file_handler = RotatingFileHandler(path, maxBytes=1_500_000, backupCount=5, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.propagate = False
+    return logger
+
+
 LOGGER = logging.getLogger("debate_card_cutter")
 if not LOGGER.handlers:
     LOGGER.setLevel(logging.INFO)
@@ -225,8 +243,21 @@ if not LOGGER.handlers:
     LOGGER.addHandler(stream_handler)
     LOGGER.propagate = False
 
+REQUEST_LOGGER = _make_file_logger("debate_card_cutter.requests", REQUEST_LOG_FILE)
+RESEARCH_LOGGER = _make_file_logger("debate_card_cutter.research", RESEARCH_LOG_FILE)
+PROVIDER_LOGGER = _make_file_logger("debate_card_cutter.providers", PROVIDER_LOG_FILE)
+ERROR_LOGGER = _make_file_logger("debate_card_cutter.errors", ERROR_LOG_FILE)
+
 
 class ResearchError(RuntimeError):
+    pass
+
+
+class ProviderAccessError(RuntimeError):
+    pass
+
+
+class ProviderQuotaError(ProviderAccessError):
     pass
 
 
@@ -271,7 +302,16 @@ def _log_event(level: int, event: str, **fields: Any) -> None:
             cleaned[key] = value
         else:
             cleaned[key] = str(value)
-    LOGGER.log(level, json.dumps(cleaned, ensure_ascii=True))
+    line = json.dumps(cleaned, ensure_ascii=True)
+    LOGGER.log(level, line)
+    if event.startswith("request_") or event.endswith("_response_write_failed") or event in {"response_write_failed", "binary_response_write_failed"}:
+        REQUEST_LOGGER.log(level, line)
+    if event.startswith("research_") or event.startswith("search_"):
+        RESEARCH_LOGGER.log(level, line)
+    if event.startswith("cut_") or event.startswith("provider_"):
+        PROVIDER_LOGGER.log(level, line)
+    if level >= logging.WARNING or event.endswith("_error") or event.endswith("_failed"):
+        ERROR_LOGGER.log(level, line)
 
 
 def _binary_response(
@@ -710,11 +750,24 @@ def _bedrock_api_key() -> str:
 
 
 def _bedrock_configured() -> bool:
-    return bool((BEDROCK_BASE_URL or BEDROCK_REGION) and BEDROCK_MODEL and _bedrock_api_key())
+    return bool((BEDROCK_BASE_URL or BEDROCK_REGION) and (BEDROCK_INFERENCE_PROFILE or BEDROCK_MODEL) and _bedrock_api_key())
+
+
+def _resolve_bedrock_model_id(model: str = "") -> str:
+    explicit = _clean_text(model or BEDROCK_INFERENCE_PROFILE or BEDROCK_MODEL)
+    if not explicit:
+        return ""
+    if explicit.startswith("arn:"):
+        return explicit
+    if explicit.startswith(("us.", "eu.", "apac.", "sa.")):
+        return explicit
+    if explicit.startswith("meta.llama4-"):
+        return f"us.{explicit}"
+    return explicit
 
 
 def _resolve_bedrock_url(model: str = "") -> str:
-    model_id = _clean_text(model or BEDROCK_MODEL)
+    model_id = _resolve_bedrock_model_id(model)
     if not model_id:
         return ""
     base_url = BEDROCK_BASE_URL.rstrip("/")
@@ -767,9 +820,9 @@ def _provider_preference(payload: dict[str, Any]) -> list[str]:
     if pinned_provider == "ollama":
         return ["ollama", "bedrock", "chatgpt_bridge", "openai_compat", "openai", "fallback"]
     if pinned_provider == "bedrock":
-        return ["bedrock", "openai_compat", "openai", "fallback"]
+        return ["bedrock", "fallback"]
     if _bedrock_configured():
-        return ["bedrock", "openai_compat", "openai", "fallback"]
+        return ["bedrock", "fallback"]
     if CHATGPT_BRIDGE_BASE_URL and CHATGPT_BRIDGE_MODEL:
         return ["chatgpt_bridge", "openai_compat", "openai", "fallback"]
     if OPENAI_COMPAT_BASE_URL and OPENAI_COMPAT_MODEL:
@@ -777,6 +830,19 @@ def _provider_preference(payload: dict[str, Any]) -> list[str]:
     if os.getenv("OPENAI_API_KEY", "").strip():
         return ["openai", "fallback"]
     return ["fallback"]
+
+
+def _strict_provider_mode(payload: dict[str, Any]) -> bool:
+    requested_provider = _normalize_provider(payload.get("provider") or payload.get("model_provider"))
+    if requested_provider and requested_provider != "fallback":
+        return True
+
+    pinned_provider = _normalize_provider(os.getenv("LOCAL_MODEL_PROVIDER", ""))
+    if pinned_provider and pinned_provider != "fallback":
+        return True
+
+    providers = [provider for provider in _provider_preference(payload) if provider != "fallback"]
+    return len(providers) == 1
 
 
 def _summarize_card_for_prompt(card: dict[str, Any]) -> dict[str, Any]:
@@ -3000,10 +3066,10 @@ def _extract_bedrock_text(response_json: dict[str, Any]) -> str:
 
 def _call_bedrock_converse_request(*, system_text: str, user_text: str, timeout: int) -> dict[str, Any]:
     url = _resolve_bedrock_url()
-    model = BEDROCK_MODEL
+    model = _resolve_bedrock_model_id()
     api_key = _bedrock_api_key()
     if not url or not model:
-        raise RuntimeError("BEDROCK_REGION or BEDROCK_BASE_URL and BEDROCK_MODEL must be set")
+        raise RuntimeError("BEDROCK_REGION or BEDROCK_BASE_URL and BEDROCK_MODEL or BEDROCK_INFERENCE_PROFILE must be set")
     if not api_key:
         raise RuntimeError("BEDROCK_API_KEY or AWS_BEARER_TOKEN_BEDROCK must be set")
 
@@ -3035,7 +3101,16 @@ def _call_bedrock_converse_request(*, system_text: str, user_text: str, timeout:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Bedrock request failed ({exc.code}): {error_body}") from exc
+        lower_body = error_body.lower()
+        if exc.code == 429 or "too many tokens per day" in lower_body or "throttl" in lower_body or "quota" in lower_body:
+            raise ProviderQuotaError(f"Bedrock quota limit reached: {error_body}") from exc
+        if "inference profile" in error_body.lower():
+            raise ProviderAccessError(
+                "Bedrock rejected the model ID for on-demand invocation. "
+                "Use BEDROCK_INFERENCE_PROFILE or set BEDROCK_MODEL to an inference profile such as "
+                "'us.meta.llama4-scout-17b-instruct-v1:0'."
+            ) from exc
+        raise ProviderAccessError(f"Bedrock request failed ({exc.code}): {error_body}") from exc
 
 
 def _call_bedrock_json_prompt(prompt: dict[str, Any]) -> dict[str, Any]:
@@ -3364,6 +3439,7 @@ def _call_ollama(payload: dict[str, Any], *, stage: str = "cut", candidate_card:
 
 def _call_bedrock(payload: dict[str, Any], *, stage: str = "cut", candidate_card: dict[str, Any] | None = None) -> dict[str, Any]:
     prompt = _build_prompt(payload, stage=stage, candidate_card=candidate_card)
+    resolved_model = _resolve_bedrock_model_id()
     response_json = _call_bedrock_converse_request(
         system_text="You cut and validate debate cards. Return strict JSON only, matching the schema provided by the user.",
         user_text=json.dumps(prompt, ensure_ascii=True),
@@ -3379,7 +3455,7 @@ def _call_bedrock(payload: dict[str, Any], *, stage: str = "cut", candidate_card
             "used_ai": True,
             "mode": "ai",
             "provider": "bedrock",
-            "model": BEDROCK_MODEL,
+            "model": resolved_model,
             "stage": stage,
         },
     }
@@ -3488,7 +3564,9 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
         base_meta["research_error"] = research_error
 
     errors: list[str] = []
-    for provider in _provider_preference(payload):
+    provider_chain = _provider_preference(payload)
+    strict_provider_mode = _strict_provider_mode(payload)
+    for provider in provider_chain:
         if provider == "fallback":
             break
         try:
@@ -3511,6 +3589,8 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                         selected_indices=selection_meta.get("selected_indices"),
                         used_ai_selection=selection_meta.get("used_ai_selection"),
                     )
+                except ProviderAccessError:
+                    raise
                 except Exception as selection_exc:
                     selection_errors.append(f"{provider} source_select: {selection_exc}")
                     _log_event(logging.WARNING, "cut_source_selection_failed", request_id=request_id, provider=provider, error=str(selection_exc))
@@ -3591,6 +3671,8 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                         validation_meta.setdefault("revised", revised)
                         validation_meta.setdefault("useful", True)
                         validation_meta.setdefault("passed", True)
+                except ProviderAccessError:
+                    raise
                 except Exception as validation_exc:
                     validation_errors.append(f"{provider} validate: {validation_exc}")
                     _log_event(logging.WARNING, "cut_validation_failed", request_id=request_id, provider=provider, attempt_index=attempt_index, error=str(validation_exc))
@@ -3650,10 +3732,25 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                 return {"ok": True, **result}
 
             errors.extend([*selection_errors, *attempt_errors])
+        except ProviderQuotaError as exc:
+            errors.append(f"{provider}: {exc}")
+            _log_event(logging.WARNING, "cut_provider_quota_failed", request_id=request_id, provider=provider, error=str(exc))
+            if strict_provider_mode:
+                raise
+            continue
+        except ProviderAccessError as exc:
+            errors.append(f"{provider}: {exc}")
+            _log_event(logging.WARNING, "cut_provider_access_failed", request_id=request_id, provider=provider, error=str(exc))
+            if strict_provider_mode:
+                raise
+            continue
         except Exception as exc:
             errors.append(f"{provider}: {exc}")
             _log_event(logging.WARNING, "cut_provider_failed", request_id=request_id, provider=provider, error=str(exc))
             continue
+
+    if strict_provider_mode and errors:
+        raise ProviderAccessError("; ".join(errors))
 
     cards = _build_fallback_cards(payload)
     fallback_validation = _default_validation_meta(
@@ -4092,8 +4189,15 @@ class DebateCardHandler(SimpleHTTPRequestHandler):
         except ResearchError as exc:
             _log_event(logging.WARNING, "research_error", request_id=request_id, path=self.path, error=str(exc))
             _json_response(self, HTTPStatus.BAD_GATEWAY, {"ok": False, "request_id": request_id, "error": str(exc)})
+        except ProviderQuotaError as exc:
+            _log_event(logging.WARNING, "provider_quota_error", request_id=request_id, path=self.path, error=str(exc))
+            _json_response(self, HTTPStatus.TOO_MANY_REQUESTS, {"ok": False, "request_id": request_id, "error": str(exc)})
+        except ProviderAccessError as exc:
+            _log_event(logging.WARNING, "provider_access_error", request_id=request_id, path=self.path, error=str(exc))
+            _json_response(self, HTTPStatus.BAD_GATEWAY, {"ok": False, "request_id": request_id, "error": str(exc)})
         except Exception as exc:
             LOGGER.exception("request_failed request_id=%s path=%s", request_id, self.path)
+            ERROR_LOGGER.exception("request_failed request_id=%s path=%s", request_id, self.path)
             _json_response(self, HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "request_id": request_id, "error": str(exc)})
 
     def log_message(self, format: str, *args: Any) -> None:

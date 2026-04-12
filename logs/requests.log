@@ -1,0 +1,7 @@
+2026-04-11 16:25:05,281 INFO {"event": "request_start", "request_id": "smoke-req", "path": "/api/test"}
+2026-04-11 17:56:31,427 INFO {"event": "request_start", "request_id": "01312bc635", "path": "/api/cut", "draft_tag": "nuclear weapons are to expensive", "has_article_text": false, "source_url": "", "semantic_search_enabled": true}
+2026-04-11 18:02:55,273 INFO {"event": "request_start", "request_id": "f734a6ba6c", "path": "/api/research", "draft_tag": "nuclear weapons are to expensive", "has_article_text": false, "source_url": "", "semantic_search_enabled": true}
+2026-04-11 18:03:23,417 INFO {"event": "request_success", "request_id": "f734a6ba6c", "path": "/api/research", "selected_title": "[2512.07487] Artificial Intelligence and Nuclear Weapons Proliferation: The Technological Arms Race for (In)visibility", "source_count": 8}
+2026-04-11 18:04:20,163 INFO {"event": "request_start", "request_id": "44f421dcca", "path": "/api/cut", "draft_tag": "nuclear weapons are to expensive", "has_article_text": true, "source_url": "https://arxiv.org/abs/2512.07487", "semantic_search_enabled": true}
+2026-04-11 18:07:12,292 INFO {"event": "request_start", "request_id": "6f1f335eb0", "path": "/api/cut", "draft_tag": "nuclear weapons are to expensive", "has_article_text": false, "source_url": "", "semantic_search_enabled": true}
+2026-04-11 18:10:45,196 INFO {"event": "request_start", "request_id": "2f94fa9afd", "path": "/api/cut", "draft_tag": "nuclear weapons are to expensive", "has_article_text": false, "source_url": "", "semantic_search_enabled": true}

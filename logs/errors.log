@@ -1,0 +1,16 @@
+2026-04-11 16:25:05,282 WARNING {"event": "cut_provider_failed", "request_id": "smoke-provider", "provider": "bedrock", "error": "boom"}
+2026-04-11 16:25:11,112 WARNING {"event": "cut_provider_quota_failed", "request_id": "quota-smoke", "provider": "bedrock", "error": "quota smoke"}
+2026-04-11 17:57:03,058 WARNING {"event": "cut_provider_quota_failed", "request_id": "01312bc635", "provider": "bedrock", "error": "Bedrock quota limit reached: {\"message\":\"Too many tokens per day, please wait before trying again.\"}"}
+2026-04-11 17:57:03,069 WARNING {"event": "provider_quota_error", "request_id": "01312bc635", "path": "/api/cut", "error": "Bedrock quota limit reached: {\"message\":\"Too many tokens per day, please wait before trying again.\"}"}
+2026-04-11 18:04:27,805 WARNING {"event": "search_provider_failed", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive journal article abstract", "error": "HTTP Error 403: Forbidden"}
+2026-04-11 18:04:43,082 WARNING {"event": "cut_provider_quota_failed", "request_id": "44f421dcca", "provider": "bedrock", "error": "Bedrock quota limit reached: {\"message\":\"Too many tokens per day, please wait before trying again.\"}"}
+2026-04-11 18:04:43,083 WARNING {"event": "provider_quota_error", "request_id": "44f421dcca", "path": "/api/cut", "error": "Bedrock quota limit reached: {\"message\":\"Too many tokens per day, please wait before trying again.\"}"}
+2026-04-11 18:07:17,290 WARNING {"event": "search_provider_failed", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons cost analysis", "error": "HTTP Error 403: Forbidden"}
+2026-04-11 18:09:18,449 WARNING {"event": "cut_provider_failed", "request_id": "6f1f335eb0", "provider": "openai_compat", "error": "Model response contained incomplete JSON"}
+2026-04-11 18:09:18,453 WARNING {"event": "cut_source_selection_failed", "request_id": "6f1f335eb0", "provider": "openai", "error": "OPENAI_API_KEY is not set"}
+2026-04-11 18:09:18,454 WARNING {"event": "cut_provider_failed", "request_id": "6f1f335eb0", "provider": "openai", "error": "OPENAI_API_KEY is not set"}
+2026-04-11 18:09:18,454 WARNING {"event": "provider_access_error", "request_id": "6f1f335eb0", "path": "/api/cut", "error": "openai_compat: Model response contained incomplete JSON; openai: OPENAI_API_KEY is not set"}
+2026-04-11 18:13:10,105 WARNING {"event": "cut_provider_failed", "request_id": "2f94fa9afd", "provider": "openai_compat", "error": "Model response contained incomplete JSON"}
+2026-04-11 18:13:10,106 WARNING {"event": "cut_source_selection_failed", "request_id": "2f94fa9afd", "provider": "openai", "error": "OPENAI_API_KEY is not set"}
+2026-04-11 18:13:10,108 WARNING {"event": "cut_provider_failed", "request_id": "2f94fa9afd", "provider": "openai", "error": "OPENAI_API_KEY is not set"}
+2026-04-11 18:13:10,108 WARNING {"event": "provider_access_error", "request_id": "2f94fa9afd", "path": "/api/cut", "error": "openai_compat: Model response contained incomplete JSON; openai: OPENAI_API_KEY is not set"}

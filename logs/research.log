@@ -1,0 +1,509 @@
+2026-04-11 16:25:05,282 INFO {"event": "research_start", "request_id": "smoke-research", "path": "/api/test"}
+2026-04-11 17:56:31,934 INFO {"event": "research_start", "request_id": "01312bc635", "search_mode": "semantic", "semantic_enabled": true, "draft_tag": "nuclear weapons are to expensive", "source_url": "", "has_article_text": false, "blocked_domains": []}
+2026-04-11 17:56:31,937 INFO {"event": "research_query_pack", "request_id": "01312bc635", "query": "nuclear weapons are to expensive", "query_refinement_used": false, "query_refinement_provider": "heuristic", "intent_claim": "nuclear weapons are to expensive"}
+2026-04-11 17:56:32,271 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:32,695 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:32,990 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:33,282 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:33,575 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:33,793 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:34,082 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:34,301 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:34,597 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:34,835 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:35,141 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:35,359 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:35,635 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:35,874 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:36,175 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:36,516 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:36,886 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:37,123 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:37,467 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:37,803 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:38,169 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:38,451 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:38,885 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 17:56:39,219 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 17:56:39,562 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:39,868 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:40,146 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:40,396 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:40,691 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:40,958 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:41,266 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:41,533 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:41,848 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:42,088 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:42,386 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:42,636 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:42,906 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:43,135 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:43,437 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:43,694 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:43,985 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:44,270 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:44,575 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:44,818 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:45,086 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:45,335 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:45,636 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 17:56:45,901 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 17:56:46,207 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:46,448 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:46,747 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:47,034 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:47,327 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:47,572 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:47,886 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:48,130 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:48,426 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:48,727 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:49,026 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:49,252 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:49,526 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:49,775 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:50,093 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:50,348 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:50,646 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:50,895 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:51,188 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:51,428 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:51,686 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:51,924 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:52,194 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 17:56:52,449 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 17:56:52,706 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:rand.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 17:56:52,949 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 17:56:53,287 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:brookings.edu nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 17:56:53,572 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 17:56:53,870 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cfr.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 17:56:54,169 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 17:56:54,466 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:imf.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 17:56:54,692 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 17:56:54,962 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:worldbank.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 17:56:55,224 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 17:56:55,527 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 17:56:55,759 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 17:56:56,053 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:rand.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 17:56:56,311 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 17:56:56,591 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:brookings.edu nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 17:56:56,838 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 17:56:57,146 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cfr.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 17:56:57,441 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 17:56:57,726 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:imf.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 17:56:57,979 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 17:56:58,254 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:worldbank.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 17:56:58,516 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 17:56:58,808 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 17:56:59,050 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 17:56:59,334 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "nuclear weapons are to expensive", "result_count": 0}
+2026-04-11 17:56:59,573 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons are to expensive", "result_count": 8}
+2026-04-11 17:56:59,891 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "nuclear weapons are to expensive evidence", "result_count": 0}
+2026-04-11 17:57:00,193 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons are to expensive evidence", "result_count": 8}
+2026-04-11 17:57:00,194 INFO {"event": "research_discovered", "request_id": "01312bc635", "academic": 0, "think_tank": 0, "general_web": 16, "executed_queries": [{"stage": "academic", "query": "nuclear weapons are to expensive study evidence paper pdf doi"}, {"stage": "academic", "query": "nuclear weapons are to expensive journal article abstract"}, {"stage": "academic", "query": "nuclear weapons are to expensive working paper"}, {"stage": "think_tank", "query": "nuclear weapons are to expensive report analysis"}, {"stage": "think_tank", "query": "nuclear weapons are to expensive policy brief"}, {"stage": "general_web", "query": "nuclear weapons are to expensive"}, {"stage": "general_web", "query": "nuclear weapons are to expensive evidence"}]}
+2026-04-11 17:57:00,196 INFO {"event": "research_filtered_discovered", "request_id": "01312bc635", "discovered": 16, "blocked_domains": []}
+2026-04-11 17:57:02,639 INFO {"event": "research_complete", "request_id": "01312bc635", "fetched": 8, "mixed_pool": 8, "selected_source_id": "S1", "selected_title": "What is Nuclear Energy? The Science of Nuclear Power", "selected_url": "https://www.iaea.org/newscenter/news/what-is-nuclear-energy-the-science-of-nuclear-power", "selected_bucket": "academic"}
+2026-04-11 18:02:55,817 INFO {"event": "research_start", "request_id": "f734a6ba6c", "search_mode": "semantic", "semantic_enabled": true, "draft_tag": "nuclear weapons are to expensive", "source_url": "", "has_article_text": false, "blocked_domains": []}
+2026-04-11 18:02:55,818 INFO {"event": "research_query_pack", "request_id": "f734a6ba6c", "query": "nuclear weapons are to expensive", "query_refinement_used": false, "query_refinement_provider": "heuristic", "intent_claim": "nuclear weapons are to expensive"}
+2026-04-11 18:02:56,695 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 4}
+2026-04-11 18:02:56,976 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:02:57,917 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:02:58,192 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:02:58,426 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:02:58,713 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:02:58,953 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:02:59,218 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:02:59,449 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:02:59,731 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:00,002 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:00,280 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:00,527 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:00,803 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:01,031 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:01,314 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:01,528 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:01,812 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:02,074 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:02,394 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:02,625 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:02,913 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:03,131 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:03,450 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:03,699 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:03,977 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:03:04,215 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:03:04,493 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:04,783 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:05,072 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:05,293 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:05,632 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:05,887 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:06,198 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:06,441 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:06,693 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:06,933 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:07,216 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:07,504 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:07,797 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:08,055 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:08,331 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:08,610 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:08,915 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:09,158 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:09,433 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:09,680 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:09,992 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:10,197 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:10,492 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons are to expensive working paper", "result_count": 0}
+2026-04-11 18:03:10,793 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:03:11,097 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:rand.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 18:03:11,379 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:03:11,665 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:brookings.edu nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 18:03:11,913 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:03:12,197 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cfr.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 18:03:12,461 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:03:12,695 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:imf.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 18:03:12,911 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:03:13,161 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:worldbank.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 18:03:13,408 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:03:13,659 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive report analysis", "result_count": 0}
+2026-04-11 18:03:13,890 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:03:14,131 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:rand.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 18:03:14,361 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:03:14,651 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:brookings.edu nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 18:03:14,884 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:03:15,127 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cfr.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 18:03:15,364 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:03:15,614 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:imf.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 18:03:16,018 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:03:16,265 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:worldbank.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 18:03:16,523 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:03:16,800 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive policy brief", "result_count": 0}
+2026-04-11 18:03:17,037 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:03:17,308 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "nuclear weapons are to expensive", "result_count": 0}
+2026-04-11 18:03:17,549 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons are to expensive", "result_count": 8}
+2026-04-11 18:03:17,821 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "nuclear weapons are to expensive evidence", "result_count": 0}
+2026-04-11 18:03:18,042 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons are to expensive evidence", "result_count": 8}
+2026-04-11 18:03:18,043 INFO {"event": "research_discovered", "request_id": "f734a6ba6c", "academic": 8, "think_tank": 0, "general_web": 16, "executed_queries": [{"stage": "academic", "query": "nuclear weapons are to expensive study evidence paper pdf doi"}, {"stage": "academic", "query": "nuclear weapons are to expensive journal article abstract"}, {"stage": "academic", "query": "nuclear weapons are to expensive working paper"}, {"stage": "think_tank", "query": "nuclear weapons are to expensive report analysis"}, {"stage": "think_tank", "query": "nuclear weapons are to expensive policy brief"}, {"stage": "general_web", "query": "nuclear weapons are to expensive"}, {"stage": "general_web", "query": "nuclear weapons are to expensive evidence"}]}
+2026-04-11 18:03:18,044 INFO {"event": "research_filtered_discovered", "request_id": "f734a6ba6c", "discovered": 24, "blocked_domains": []}
+2026-04-11 18:03:23,407 INFO {"event": "research_complete", "request_id": "f734a6ba6c", "fetched": 16, "mixed_pool": 8, "selected_source_id": "S1", "selected_title": "[2512.07487] Artificial Intelligence and Nuclear Weapons Proliferation: The Technological Arms Race for (In)visibility", "selected_url": "https://arxiv.org/abs/2512.07487", "selected_bucket": "academic"}
+2026-04-11 18:04:20,377 INFO {"event": "research_start", "request_id": "44f421dcca", "search_mode": "semantic", "semantic_enabled": true, "draft_tag": "nuclear weapons are to expensive", "source_url": "https://arxiv.org/abs/2512.07487", "has_article_text": true, "blocked_domains": []}
+2026-04-11 18:04:20,378 INFO {"event": "research_query_pack", "request_id": "44f421dcca", "query": "nuclear weapons are to expensive", "query_refinement_used": false, "query_refinement_provider": "heuristic", "intent_claim": "nuclear weapons are to expensive"}
+2026-04-11 18:04:20,646 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:20,878 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:21,159 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:21,377 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:21,632 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:21,852 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:22,088 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:22,321 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:22,546 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:22,773 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:23,052 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:23,255 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:23,494 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:23,715 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:23,989 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:24,217 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:24,490 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:24,820 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:25,115 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:25,385 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:25,672 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:25,897 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:26,211 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 0}
+2026-04-11 18:04:26,476 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons are to expensive study evidence paper pdf doi", "result_count": 6}
+2026-04-11 18:04:26,751 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive journal article abstract", "result_count": 0}
+2026-04-11 18:04:26,989 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:27,805 WARNING {"event": "search_provider_failed", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive journal article abstract", "error": "HTTP Error 403: Forbidden"}
+2026-04-11 18:04:28,089 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:28,091 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 599.71}
+2026-04-11 18:04:28,339 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:28,341 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 599.46}
+2026-04-11 18:04:28,606 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:28,606 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 599.2}
+2026-04-11 18:04:28,890 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:28,891 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 598.91}
+2026-04-11 18:04:29,120 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:29,121 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 598.68}
+2026-04-11 18:04:29,378 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:29,380 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 598.43}
+2026-04-11 18:04:29,637 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:29,637 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 598.17}
+2026-04-11 18:04:29,870 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:29,871 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 597.93}
+2026-04-11 18:04:30,133 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:30,134 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 597.67}
+2026-04-11 18:04:30,396 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:30,397 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons are to expensive journal article abstract", "disabled_for_seconds": 597.41}
+2026-04-11 18:04:30,681 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons are to expensive journal article abstract", "result_count": 6}
+2026-04-11 18:04:30,683 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons are to expensive working paper", "disabled_for_seconds": 597.12}
+2026-04-11 18:04:30,936 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:30,937 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons are to expensive working paper", "disabled_for_seconds": 596.87}
+2026-04-11 18:04:31,173 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:31,174 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive working paper", "disabled_for_seconds": 596.63}
+2026-04-11 18:04:31,425 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:31,427 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive working paper", "disabled_for_seconds": 596.38}
+2026-04-11 18:04:31,703 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:31,704 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons are to expensive working paper", "disabled_for_seconds": 596.1}
+2026-04-11 18:04:31,930 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:31,931 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons are to expensive working paper", "disabled_for_seconds": 595.87}
+2026-04-11 18:04:32,166 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:32,168 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons are to expensive working paper", "disabled_for_seconds": 595.64}
+2026-04-11 18:04:32,418 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:32,420 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive working paper", "disabled_for_seconds": 595.39}
+2026-04-11 18:04:32,670 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:32,671 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons are to expensive working paper", "disabled_for_seconds": 595.13}
+2026-04-11 18:04:32,912 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:32,912 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons are to expensive working paper", "disabled_for_seconds": 594.89}
+2026-04-11 18:04:33,146 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:33,148 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons are to expensive working paper", "disabled_for_seconds": 594.66}
+2026-04-11 18:04:33,410 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:33,411 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons are to expensive working paper", "disabled_for_seconds": 594.39}
+2026-04-11 18:04:33,661 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons are to expensive working paper", "result_count": 6}
+2026-04-11 18:04:33,663 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:rand.org nuclear weapons are to expensive report analysis", "disabled_for_seconds": 594.14}
+2026-04-11 18:04:33,901 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:04:33,902 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:brookings.edu nuclear weapons are to expensive report analysis", "disabled_for_seconds": 593.9}
+2026-04-11 18:04:34,179 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:04:34,179 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cfr.org nuclear weapons are to expensive report analysis", "disabled_for_seconds": 593.63}
+2026-04-11 18:04:34,429 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:04:34,430 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:imf.org nuclear weapons are to expensive report analysis", "disabled_for_seconds": 593.37}
+2026-04-11 18:04:34,705 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:04:34,707 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:worldbank.org nuclear weapons are to expensive report analysis", "disabled_for_seconds": 593.1}
+2026-04-11 18:04:34,937 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:04:34,938 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive report analysis", "disabled_for_seconds": 592.87}
+2026-04-11 18:04:35,189 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive report analysis", "result_count": 6}
+2026-04-11 18:04:35,190 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:rand.org nuclear weapons are to expensive policy brief", "disabled_for_seconds": 592.61}
+2026-04-11 18:04:35,442 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:04:35,443 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:brookings.edu nuclear weapons are to expensive policy brief", "disabled_for_seconds": 592.36}
+2026-04-11 18:04:35,686 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:04:35,687 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cfr.org nuclear weapons are to expensive policy brief", "disabled_for_seconds": 592.12}
+2026-04-11 18:04:35,960 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:04:35,962 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:imf.org nuclear weapons are to expensive policy brief", "disabled_for_seconds": 591.84}
+2026-04-11 18:04:36,215 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:04:36,217 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:worldbank.org nuclear weapons are to expensive policy brief", "disabled_for_seconds": 591.59}
+2026-04-11 18:04:36,451 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:04:36,452 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons are to expensive policy brief", "disabled_for_seconds": 591.35}
+2026-04-11 18:04:36,739 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons are to expensive policy brief", "result_count": 6}
+2026-04-11 18:04:36,740 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "nuclear weapons are to expensive", "disabled_for_seconds": 591.07}
+2026-04-11 18:04:36,998 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons are to expensive", "result_count": 8}
+2026-04-11 18:04:36,999 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "nuclear weapons are to expensive evidence", "disabled_for_seconds": 590.81}
+2026-04-11 18:04:37,240 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons are to expensive evidence", "result_count": 8}
+2026-04-11 18:04:37,241 INFO {"event": "research_discovered", "request_id": "44f421dcca", "academic": 0, "think_tank": 0, "general_web": 17, "executed_queries": [{"stage": "academic", "query": "nuclear weapons are to expensive study evidence paper pdf doi"}, {"stage": "academic", "query": "nuclear weapons are to expensive journal article abstract"}, {"stage": "academic", "query": "nuclear weapons are to expensive working paper"}, {"stage": "think_tank", "query": "nuclear weapons are to expensive report analysis"}, {"stage": "think_tank", "query": "nuclear weapons are to expensive policy brief"}, {"stage": "general_web", "query": "nuclear weapons are to expensive"}, {"stage": "general_web", "query": "nuclear weapons are to expensive evidence"}]}
+2026-04-11 18:04:37,242 INFO {"event": "research_filtered_discovered", "request_id": "44f421dcca", "discovered": 17, "blocked_domains": []}
+2026-04-11 18:04:42,715 INFO {"event": "research_complete", "request_id": "44f421dcca", "fetched": 9, "mixed_pool": 8, "selected_source_id": "S1", "selected_title": "[2512.07487] Artificial Intelligence and Nuclear Weapons Proliferation: The Technological Arms Race for (In)visibility", "selected_url": "https://arxiv.org/abs/2512.07487", "selected_bucket": "academic"}
+2026-04-11 18:07:16,502 INFO {"event": "research_start", "request_id": "6f1f335eb0", "search_mode": "semantic", "semantic_enabled": true, "draft_tag": "nuclear weapons are to expensive", "source_url": "", "has_article_text": false, "blocked_domains": []}
+2026-04-11 18:07:16,504 INFO {"event": "research_query_pack", "request_id": "6f1f335eb0", "query": "cost of nuclear weapons expensive", "query_refinement_used": true, "query_refinement_provider": "openai_compat", "intent_claim": "The cost of nuclear weapons is prohibitive."}
+2026-04-11 18:07:17,290 WARNING {"event": "search_provider_failed", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons cost analysis", "error": "HTTP Error 403: Forbidden"}
+2026-04-11 18:07:17,588 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:17,589 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons cost analysis", "disabled_for_seconds": 599.7}
+2026-04-11 18:07:17,822 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:17,824 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons cost analysis", "disabled_for_seconds": 599.47}
+2026-04-11 18:07:18,082 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:18,083 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons cost analysis", "disabled_for_seconds": 599.21}
+2026-04-11 18:07:18,349 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:18,351 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons cost analysis", "disabled_for_seconds": 598.94}
+2026-04-11 18:07:18,682 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:18,682 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons cost analysis", "disabled_for_seconds": 598.61}
+2026-04-11 18:07:18,920 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:18,922 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons cost analysis", "disabled_for_seconds": 598.37}
+2026-04-11 18:07:19,154 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:19,155 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons cost analysis", "disabled_for_seconds": 598.13}
+2026-04-11 18:07:19,388 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:19,390 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons cost analysis", "disabled_for_seconds": 597.9}
+2026-04-11 18:07:19,626 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:19,626 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons cost analysis", "disabled_for_seconds": 597.66}
+2026-04-11 18:07:19,846 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:19,847 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons cost analysis", "disabled_for_seconds": 597.44}
+2026-04-11 18:07:20,067 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:20,069 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons cost analysis", "disabled_for_seconds": 597.22}
+2026-04-11 18:07:20,328 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:07:20,329 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:doi.org financial burden of nuclear weapons", "disabled_for_seconds": 596.96}
+2026-04-11 18:07:20,643 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:20,644 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:arxiv.org financial burden of nuclear weapons", "disabled_for_seconds": 596.64}
+2026-04-11 18:07:20,941 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:20,942 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov financial burden of nuclear weapons", "disabled_for_seconds": 596.35}
+2026-04-11 18:07:21,172 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:21,172 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org financial burden of nuclear weapons", "disabled_for_seconds": 596.12}
+2026-04-11 18:07:21,440 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:21,441 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:ssrn.com financial burden of nuclear weapons", "disabled_for_seconds": 595.85}
+2026-04-11 18:07:21,671 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:21,672 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sciencedirect.com financial burden of nuclear weapons", "disabled_for_seconds": 595.62}
+2026-04-11 18:07:21,908 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:21,908 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:springer.com financial burden of nuclear weapons", "disabled_for_seconds": 595.38}
+2026-04-11 18:07:22,179 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:22,179 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com financial burden of nuclear weapons", "disabled_for_seconds": 595.11}
+2026-04-11 18:07:22,418 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:22,419 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cambridge.org financial burden of nuclear weapons", "disabled_for_seconds": 594.87}
+2026-04-11 18:07:22,678 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:22,678 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:tandfonline.com financial burden of nuclear weapons", "disabled_for_seconds": 594.61}
+2026-04-11 18:07:22,975 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:22,976 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sagepub.com financial burden of nuclear weapons", "disabled_for_seconds": 594.31}
+2026-04-11 18:07:23,231 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:23,231 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:jstor.org financial burden of nuclear weapons", "disabled_for_seconds": 594.06}
+2026-04-11 18:07:24,550 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:24,551 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:doi.org cost comparison of nuclear weapons", "disabled_for_seconds": 592.74}
+2026-04-11 18:07:24,817 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:24,817 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:arxiv.org cost comparison of nuclear weapons", "disabled_for_seconds": 592.47}
+2026-04-11 18:07:25,075 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:25,076 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov cost comparison of nuclear weapons", "disabled_for_seconds": 592.21}
+2026-04-11 18:07:25,321 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:25,322 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org cost comparison of nuclear weapons", "disabled_for_seconds": 591.97}
+2026-04-11 18:07:25,622 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:25,623 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:ssrn.com cost comparison of nuclear weapons", "disabled_for_seconds": 591.67}
+2026-04-11 18:07:25,867 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:25,868 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sciencedirect.com cost comparison of nuclear weapons", "disabled_for_seconds": 591.42}
+2026-04-11 18:07:26,209 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:26,210 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:springer.com cost comparison of nuclear weapons", "disabled_for_seconds": 591.08}
+2026-04-11 18:07:26,447 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:26,449 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com cost comparison of nuclear weapons", "disabled_for_seconds": 590.84}
+2026-04-11 18:07:26,689 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:26,690 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cambridge.org cost comparison of nuclear weapons", "disabled_for_seconds": 590.6}
+2026-04-11 18:07:26,913 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:26,914 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:tandfonline.com cost comparison of nuclear weapons", "disabled_for_seconds": 590.37}
+2026-04-11 18:07:27,206 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:27,207 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:sagepub.com cost comparison of nuclear weapons", "disabled_for_seconds": 590.08}
+2026-04-11 18:07:27,464 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:27,465 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:jstor.org cost comparison of nuclear weapons", "disabled_for_seconds": 589.82}
+2026-04-11 18:07:27,717 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:07:27,717 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:rand.org nuclear weapons expense report", "disabled_for_seconds": 589.57}
+2026-04-11 18:07:27,977 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:07:27,978 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:brookings.edu nuclear weapons expense report", "disabled_for_seconds": 589.31}
+2026-04-11 18:07:28,251 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:07:28,253 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cfr.org nuclear weapons expense report", "disabled_for_seconds": 589.04}
+2026-04-11 18:07:28,525 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:07:28,526 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:imf.org nuclear weapons expense report", "disabled_for_seconds": 588.76}
+2026-04-11 18:07:28,864 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:07:28,865 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:worldbank.org nuclear weapons expense report", "disabled_for_seconds": 588.42}
+2026-04-11 18:07:29,129 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:07:29,130 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons expense report", "disabled_for_seconds": 588.16}
+2026-04-11 18:07:29,406 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:07:29,407 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:rand.org think tank analysis on nuclear weapon costs", "disabled_for_seconds": 587.88}
+2026-04-11 18:07:29,677 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:07:29,678 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:brookings.edu think tank analysis on nuclear weapon costs", "disabled_for_seconds": 587.61}
+2026-04-11 18:07:29,928 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:07:29,928 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:cfr.org think tank analysis on nuclear weapon costs", "disabled_for_seconds": 587.36}
+2026-04-11 18:07:30,166 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:07:30,166 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:imf.org think tank analysis on nuclear weapon costs", "disabled_for_seconds": 587.12}
+2026-04-11 18:07:30,410 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:07:30,411 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:worldbank.org think tank analysis on nuclear weapon costs", "disabled_for_seconds": 586.88}
+2026-04-11 18:07:30,697 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:07:30,698 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "site:nber.org think tank analysis on nuclear weapon costs", "disabled_for_seconds": 586.59}
+2026-04-11 18:07:30,941 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:07:30,942 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "nuclear weapons budget", "disabled_for_seconds": 586.35}
+2026-04-11 18:07:31,180 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons budget", "result_count": 8}
+2026-04-11 18:07:31,181 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "cost of nuclear weapons in [year]", "disabled_for_seconds": 586.11}
+2026-04-11 18:07:31,427 INFO {"event": "search_provider_results", "provider": "bing", "query": "cost of nuclear weapons in [year]", "result_count": 8}
+2026-04-11 18:07:31,428 INFO {"event": "search_provider_skipped", "provider": "duckduckgo", "query": "nuclear weapons expenditure overview", "disabled_for_seconds": 585.86}
+2026-04-11 18:07:31,648 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons expenditure overview", "result_count": 8}
+2026-04-11 18:07:31,649 INFO {"event": "research_discovered", "request_id": "6f1f335eb0", "academic": 0, "think_tank": 0, "general_web": 24, "executed_queries": [{"stage": "academic", "query": "nuclear weapons cost analysis"}, {"stage": "academic", "query": "financial burden of nuclear weapons"}, {"stage": "academic", "query": "cost comparison of nuclear weapons"}, {"stage": "think_tank", "query": "nuclear weapons expense report"}, {"stage": "think_tank", "query": "think tank analysis on nuclear weapon costs"}, {"stage": "general_web", "query": "nuclear weapons budget"}, {"stage": "general_web", "query": "cost of nuclear weapons in [year]"}, {"stage": "general_web", "query": "nuclear weapons expenditure overview"}]}
+2026-04-11 18:07:31,650 INFO {"event": "research_filtered_discovered", "request_id": "6f1f335eb0", "discovered": 24, "blocked_domains": []}
+2026-04-11 18:07:45,993 INFO {"event": "research_complete", "request_id": "6f1f335eb0", "fetched": 16, "mixed_pool": 8, "selected_source_id": "S1", "selected_title": "Escambia County, Florida detailed profile - houses, real estate, cost of living, wages, work, agriculture, ancestries, and more", "selected_url": "https://www.city-data.com/county/Escambia_County-FL.html", "selected_bucket": "academic"}
+2026-04-11 18:10:49,244 INFO {"event": "research_start", "request_id": "2f94fa9afd", "search_mode": "semantic", "semantic_enabled": true, "draft_tag": "nuclear weapons are to expensive", "source_url": "", "has_article_text": false, "blocked_domains": []}
+2026-04-11 18:10:49,246 INFO {"event": "research_query_pack", "request_id": "2f94fa9afd", "query": "cost of nuclear weapons expensive", "query_refinement_used": true, "query_refinement_provider": "openai_compat", "intent_claim": "The cost of nuclear weapons is prohibitive."}
+2026-04-11 18:10:49,582 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:49,901 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:50,195 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:50,525 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:50,804 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:51,077 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:51,397 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:51,647 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:51,915 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:52,168 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:52,442 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:52,715 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:53,025 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:53,264 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:53,558 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:53,787 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:54,061 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:54,342 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:54,642 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:54,877 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:55,187 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:55,423 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:55,737 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org nuclear weapons cost analysis", "result_count": 0}
+2026-04-11 18:10:55,989 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org nuclear weapons cost analysis", "result_count": 6}
+2026-04-11 18:10:56,296 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:10:56,568 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:10:56,878 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:10:57,102 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:10:57,414 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:10:57,664 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:10:58,004 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:10:58,261 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:10:58,520 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:10:58,806 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:10:59,103 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:10:59,369 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:10:59,696 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:10:59,929 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:00,208 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:00,452 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:00,763 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:01,014 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:01,331 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:01,612 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:01,884 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:02,114 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:02,460 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org financial burden of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:02,726 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org financial burden of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:03,081 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:doi.org cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:03,367 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:doi.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:03,660 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:arxiv.org cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:03,943 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:arxiv.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:04,253 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:pubmed.ncbi.nlm.nih.gov cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:04,522 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:pubmed.ncbi.nlm.nih.gov cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:04,839 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:05,173 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:05,766 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:ssrn.com cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:06,037 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:ssrn.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:06,351 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sciencedirect.com cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:06,606 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sciencedirect.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:06,961 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:springer.com cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:07,235 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:springer.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:07,535 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:onlinelibrary.wiley.com cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:07,812 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:onlinelibrary.wiley.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:08,068 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cambridge.org cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:08,328 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cambridge.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:08,665 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:tandfonline.com cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:08,917 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:tandfonline.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:09,180 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:sagepub.com cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:09,433 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:sagepub.com cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:09,720 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:jstor.org cost comparison of nuclear weapons", "result_count": 0}
+2026-04-11 18:11:10,044 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:jstor.org cost comparison of nuclear weapons", "result_count": 6}
+2026-04-11 18:11:10,379 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:rand.org nuclear weapons expense report", "result_count": 0}
+2026-04-11 18:11:10,657 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:11:11,291 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:brookings.edu nuclear weapons expense report", "result_count": 0}
+2026-04-11 18:11:11,533 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:11:11,817 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cfr.org nuclear weapons expense report", "result_count": 0}
+2026-04-11 18:11:12,115 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:11:12,401 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:imf.org nuclear weapons expense report", "result_count": 0}
+2026-04-11 18:11:12,669 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:11:12,934 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:worldbank.org nuclear weapons expense report", "result_count": 0}
+2026-04-11 18:11:13,155 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:11:13,814 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org nuclear weapons expense report", "result_count": 0}
+2026-04-11 18:11:14,024 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org nuclear weapons expense report", "result_count": 6}
+2026-04-11 18:11:14,355 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:rand.org think tank analysis on nuclear weapon costs", "result_count": 0}
+2026-04-11 18:11:14,594 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:rand.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:11:14,952 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:brookings.edu think tank analysis on nuclear weapon costs", "result_count": 0}
+2026-04-11 18:11:15,207 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:brookings.edu think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:11:15,506 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:cfr.org think tank analysis on nuclear weapon costs", "result_count": 0}
+2026-04-11 18:11:15,753 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:cfr.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:11:16,024 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:imf.org think tank analysis on nuclear weapon costs", "result_count": 0}
+2026-04-11 18:11:16,275 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:imf.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:11:16,572 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:worldbank.org think tank analysis on nuclear weapon costs", "result_count": 0}
+2026-04-11 18:11:16,900 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:worldbank.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:11:17,223 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "site:nber.org think tank analysis on nuclear weapon costs", "result_count": 0}
+2026-04-11 18:11:17,508 INFO {"event": "search_provider_results", "provider": "bing", "query": "site:nber.org think tank analysis on nuclear weapon costs", "result_count": 6}
+2026-04-11 18:11:18,134 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "nuclear weapons budget", "result_count": 0}
+2026-04-11 18:11:18,396 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons budget", "result_count": 8}
+2026-04-11 18:11:18,680 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "cost of nuclear weapons in [year]", "result_count": 0}
+2026-04-11 18:11:18,927 INFO {"event": "search_provider_results", "provider": "bing", "query": "cost of nuclear weapons in [year]", "result_count": 8}
+2026-04-11 18:11:19,222 INFO {"event": "search_provider_results", "provider": "duckduckgo", "query": "nuclear weapons expenditure overview", "result_count": 0}
+2026-04-11 18:11:19,458 INFO {"event": "search_provider_results", "provider": "bing", "query": "nuclear weapons expenditure overview", "result_count": 8}
+2026-04-11 18:11:19,459 INFO {"event": "research_discovered", "request_id": "2f94fa9afd", "academic": 0, "think_tank": 0, "general_web": 24, "executed_queries": [{"stage": "academic", "query": "nuclear weapons cost analysis"}, {"stage": "academic", "query": "financial burden of nuclear weapons"}, {"stage": "academic", "query": "cost comparison of nuclear weapons"}, {"stage": "think_tank", "query": "nuclear weapons expense report"}, {"stage": "think_tank", "query": "think tank analysis on nuclear weapon costs"}, {"stage": "general_web", "query": "nuclear weapons budget"}, {"stage": "general_web", "query": "cost of nuclear weapons in [year]"}, {"stage": "general_web", "query": "nuclear weapons expenditure overview"}]}
+2026-04-11 18:11:19,460 INFO {"event": "research_filtered_discovered", "request_id": "2f94fa9afd", "discovered": 24, "blocked_domains": []}
+2026-04-11 18:11:36,087 INFO {"event": "research_complete", "request_id": "2f94fa9afd", "fetched": 16, "mixed_pool": 8, "selected_source_id": "S1", "selected_title": "Escambia County, Florida detailed profile - houses, real estate, cost of living, wages, work, agriculture, ancestries, and more", "selected_url": "https://www.city-data.com/county/Escambia_County-FL.html", "selected_bucket": "academic"}
