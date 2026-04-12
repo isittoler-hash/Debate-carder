@@ -151,7 +151,22 @@ THINK_TANK_SEARCH_DOMAINS = [
 ]
 
 SEARCH_QUERY_NEGATIVE_TERMS = [
-    
+    "dictionary",
+    "definition",
+    "meaning",
+    "prefix",
+    "hyphen",
+    "tv",
+    "television",
+    "episode",
+    "episodes",
+    "therapist",
+    "psychologist",
+    "directory",
+    "login",
+    "support",
+    "tax",
+    "software",
 ]
 
 AUTO_EXCLUDED_HOST_SNIPPETS = (
@@ -185,6 +200,88 @@ AUTO_EXCLUDED_TEXT_SNIPPETS = (
     "login",
     "file taxes",
     "tax return",
+)
+
+LOW_VALUE_TITLE_SNIPPETS = (
+    "definition",
+    "meaning",
+    "dictionary",
+    "synonym",
+    "antonym",
+    "prefix",
+    "suffix",
+    "grammar",
+    "english language",
+    "english meaning",
+    "therapist",
+    "psychologist",
+    "find a therapist",
+    "episode",
+    "episodes",
+    "tv series",
+    "cast",
+    "season ",
+    "login",
+    "sign in",
+    "sign-in",
+    "account",
+    "support",
+    "help center",
+    "community hub",
+    "download",
+    "install",
+    "map",
+    "directions",
+    "hours",
+    "menu",
+    "restaurant",
+    "store locator",
+)
+
+LOW_VALUE_URL_SNIPPETS = (
+    "/dictionary/",
+    "/definition/",
+    "/meaning/",
+    "/synonym",
+    "/antonym",
+    "/grammar/",
+    "/therapists/",
+    "/psychologists/",
+    "/tv/",
+    "/episode",
+    "/episodes",
+    "/season-",
+    "/login",
+    "/signin",
+    "/sign-in",
+    "/account",
+    "/support/",
+    "/help/",
+    "/download",
+    "/install",
+    "/community/",
+    "/forum/",
+    "/locations/",
+    "/maps/",
+    "/menu",
+    "/store/",
+)
+
+LOW_VALUE_TEXT_SNIPPETS = (
+    "english meaning",
+    "part of speech",
+    "subject-verb agreement",
+    "synonyms and antonyms",
+    "find therapists",
+    "find a therapist",
+    "watch full episodes",
+    "episode guide",
+    "download chrome",
+    "install google chrome",
+    "sign in to your account",
+    "restaurant hours",
+    "order online",
+    "store locator",
 )
 
 GENERIC_QUERY_TERMS = {
@@ -1934,6 +2031,34 @@ def _normalized_title_key(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", _clean_text(title).lower()).strip()
 
 
+def _candidate_low_value_signals(candidate: dict[str, Any]) -> list[str]:
+    url = _clean_text(candidate.get("url")).lower()
+    title = _clean_text(candidate.get("title")).lower()
+    description = _clean_text(candidate.get("description")).lower()
+    text = _clean_text(candidate.get("text")).lower()[:2500]
+    haystack = " ".join([title, description, text, url])
+    signals: list[str] = []
+    if any(snippet in title for snippet in LOW_VALUE_TITLE_SNIPPETS):
+        signals.append("low_value_title")
+    if any(snippet in url for snippet in LOW_VALUE_URL_SNIPPETS):
+        signals.append("low_value_url")
+    if any(snippet in haystack for snippet in LOW_VALUE_TEXT_SNIPPETS):
+        signals.append("low_value_text")
+    if re.search(r"(dictionary|definition|meaning|synonym|antonym|grammar|therapist|psychologist|episode|episodes|download|install|sign in|support|help center|restaurant|store locator)", haystack, re.I):
+        signals.append("junk_pattern")
+    return _dedupe_strings(signals)
+
+
+def _discovered_result_is_low_value(item: dict[str, Any]) -> bool:
+    probe = {
+        "url": _clean_text(item.get("url")),
+        "title": _clean_text(item.get("title")),
+        "description": _clean_text(item.get("description")),
+        "text": "",
+    }
+    return bool(_candidate_low_value_signals(probe) or _candidate_exclusion_signals(probe))
+
+
 def _summary_signals(candidate: dict[str, Any]) -> list[str]:
     haystack = " ".join(
         [
@@ -1992,10 +2117,14 @@ def _candidate_exclusion_signals(candidate: dict[str, Any]) -> list[str]:
         signals.append("excluded_host")
     if any(snippet in haystack for snippet in AUTO_EXCLUDED_TEXT_SNIPPETS):
         signals.append("excluded_text")
-    if "/dictionary/" in url or "/definition/" in url:
+    if any(snippet in _candidate_low_value_signals(candidate) for snippet in ("low_value_title", "low_value_url", "low_value_text", "junk_pattern")):
+        signals.append("low_value_page")
+    if "/dictionary/" in url or "/definition/" in url or "/meaning/" in url:
         signals.append("dictionary_path")
     if "/login" in url or "/signin" in url or "/account" in url:
         signals.append("account_path")
+    if re.search(r"(therapist|psychologist|episode guide|tv series|restaurant hours|store locator|download chrome|install google chrome)", haystack, re.I):
+        signals.append("junk_content")
     return _dedupe_strings(signals)
 
 
@@ -2043,12 +2172,21 @@ def _candidate_is_usable(candidate: dict[str, Any]) -> bool:
     overlap_count = int(candidate.get("topical_overlap_count", 0) or 0)
     source_class = _clean_text(candidate.get("source_class"))
     paper_verified = bool(candidate.get("paper_verified"))
+    credibility_score = float(candidate.get("credibility_score", 0.0) or 0.0)
+    quote_strength_score = float(candidate.get("quote_strength_score", 0.0) or 0.0)
+
     if phrase_matches > 0:
         return True
     if paper_verified and overlap_count >= 1:
         return True
     if source_class == "think_tank" and overlap_count >= 1:
         return True
+    if source_class in {"peer_reviewed", "preprint", "working_paper"} and overlap_count >= 1:
+        return True
+    if source_class == "summary_or_news":
+        return overlap_count >= 3 and credibility_score >= 0.45 and quote_strength_score >= 0.35
+    if source_class == "general_web":
+        return overlap_count >= 3 and credibility_score >= 0.4 and quote_strength_score >= 0.25
     return overlap_count >= 2
 
 
@@ -2125,6 +2263,7 @@ def _collect_discovered_sources(query_pack: dict[str, Any], semantic_enabled: bo
     academic_queries = _coerce_string_list(query_pack.get("academic_queries"))
     think_tank_queries = _coerce_string_list(query_pack.get("think_tank_queries"))
     fallback_queries = _coerce_string_list(query_pack.get("fallback_web_queries"))
+    avoid_terms = _coerce_string_list(query_pack.get("avoid_terms"))
     literal_query = _clean_text(query_pack.get("literal_query"))
     academic_limit = 8 + (4 * max(0, expansion_round - 1))
     think_tank_limit = 6 + (4 * max(0, expansion_round - 1))
@@ -2139,14 +2278,17 @@ def _collect_discovered_sources(query_pack: dict[str, Any], semantic_enabled: bo
         fallback_queries = [literal_query]
 
     for query in academic_queries[:academic_query_count]:
-        executed_queries.append({"stage": "academic", "query": query})
-        discovered["academic"].extend(_search_web_domains(query, academic_limit, ACADEMIC_SEARCH_DOMAINS))
+        filtered_query = _search_query_with_exclusions(query, avoid_terms)
+        executed_queries.append({"stage": "academic", "query": filtered_query})
+        discovered["academic"].extend(_search_web_domains(filtered_query, academic_limit, ACADEMIC_SEARCH_DOMAINS))
     for query in think_tank_queries[:think_tank_query_count]:
-        executed_queries.append({"stage": "think_tank", "query": query})
-        discovered["think_tank"].extend(_search_web_domains(query, think_tank_limit, THINK_TANK_SEARCH_DOMAINS))
+        filtered_query = _search_query_with_exclusions(query, avoid_terms)
+        executed_queries.append({"stage": "think_tank", "query": filtered_query})
+        discovered["think_tank"].extend(_search_web_domains(filtered_query, think_tank_limit, THINK_TANK_SEARCH_DOMAINS))
     for query in fallback_queries[:fallback_query_count]:
-        executed_queries.append({"stage": "general_web", "query": query})
-        discovered["general_web"].extend([{**item, "seed_query": query} for item in _search_web(query, web_limit)])
+        filtered_query = _search_query_with_exclusions(query, avoid_terms)
+        executed_queries.append({"stage": "general_web", "query": filtered_query})
+        discovered["general_web"].extend([{**item, "seed_query": filtered_query} for item in _search_web(filtered_query, web_limit)])
 
     return discovered, executed_queries
 
@@ -2201,6 +2343,7 @@ def _candidate_metrics(candidate: dict[str, Any], query_terms: set[str], phrase:
     paper_verified = bool(candidate.get("paper_verified"))
     paper_confidence = float(candidate.get("paper_confidence", 0.0) or 0.0)
     summary_risk = float(candidate.get("summary_risk", 0.0) or 0.0)
+    exclusion_signals = _coerce_string_list(candidate.get("exclusion_signals"))
 
     topic_points = 0.0
     for term in query_terms:
@@ -2249,9 +2392,18 @@ def _candidate_metrics(candidate: dict[str, Any], query_terms: set[str], phrase:
     if source_class == "think_tank":
         credibility_points += 2
         notes.append("Think-tank or policy-report source.")
+    if source_class == "general_web":
+        credibility_points -= 1.5
+        notes.append("General-web source starts with a modest credibility penalty.")
+    if source_class == "summary_or_news":
+        credibility_points -= 3
+        notes.append("Summary/news source is less likely to be the primary evidence page.")
     if summary_risk:
         credibility_points -= min(6.0, summary_risk * 8.0)
         notes.append("Summary/news signals reduce confidence that this is the primary evidence source.")
+    if exclusion_signals:
+        credibility_points -= 12
+        notes.append("Low-value or excluded-source signals were detected.")
     if _clean_text(candidate.get("fetch_error")):
         credibility_points -= 10
         notes.append("Fetch failed or source content was not extracted cleanly.")
@@ -2332,33 +2484,57 @@ def _candidate_pool_bucket(candidate: dict[str, Any]) -> str:
     return "general_web"
 
 
-def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[float, float, float, float]:
+def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[float, float, float, float, float, float]:
     return (
         float(candidate.get("score", 0.0) or 0.0),
+        float(candidate.get("topical_fit_score", 0.0) or 0.0),
         float(candidate.get("paper_confidence", 0.0) or 0.0),
         float(candidate.get("quote_strength_score", 0.0) or 0.0),
         float(candidate.get("credibility_score", 0.0) or 0.0),
+        float(candidate.get("phrase_match_count", 0) or 0),
     )
 
 
 def _select_mixed_candidate_pool(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ranked = sorted(candidates, key=_candidate_sort_key, reverse=True)
+    usable_ranked = [candidate for candidate in ranked if _candidate_is_usable(candidate)]
+    if not usable_ranked:
+        usable_ranked = [candidate for candidate in ranked if not _coerce_string_list(candidate.get("exclusion_signals"))]
+
     selected: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
     seen_titles: set[str] = set()
+    bucket_targets = {
+        "academic": ACADEMIC_BUCKET_TARGET,
+        "think_tank": THINK_TANK_BUCKET_TARGET,
+        "general_web": WEB_BUCKET_TARGET,
+    }
 
-    for candidate in ranked:
+    def maybe_add(candidate: dict[str, Any]) -> bool:
         url_key = _normalize_web_url(candidate.get("url", ""))
         title_key = _normalized_title_key(candidate.get("title", ""))
         if url_key and url_key in seen_urls:
-            continue
+            return False
         if title_key and title_key in seen_titles:
-            continue
+            return False
         if url_key:
             seen_urls.add(url_key)
         if title_key:
             seen_titles.add(title_key)
         selected.append(candidate)
+        return True
+
+    for bucket_name in ("academic", "think_tank", "general_web"):
+        bucket_items = [candidate for candidate in usable_ranked if _candidate_pool_bucket(candidate) == bucket_name]
+        for candidate in bucket_items:
+            if len([item for item in selected if _candidate_pool_bucket(item) == bucket_name]) >= bucket_targets[bucket_name]:
+                break
+            maybe_add(candidate)
+
+    for candidate in usable_ranked:
+        if len(selected) >= MIXED_SOURCE_POOL_SIZE:
+            break
+        maybe_add(candidate)
 
     return [{**item, "source_id": f"S{index + 1}", "index": index + 1} for index, item in enumerate(selected)]
 
@@ -2510,9 +2686,15 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("article_text, source_url, or draft_tag is required")
 
     discovered: list[dict[str, Any]] = []
+    blocked_discovered = 0
+    low_value_discovered = 0
     for bucket_name, items in discovered_by_bucket.items():
         for item in items:
             if _domain_is_blocked(item.get("url", ""), blocked_domains):
+                blocked_discovered += 1
+                continue
+            if _discovered_result_is_low_value(item):
+                low_value_discovered += 1
                 continue
             discovered.append({**item, "discovered_bucket": bucket_name})
     _log_event(
@@ -2521,6 +2703,8 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
         request_id=request_id,
         discovered=len(discovered),
         blocked_domains=blocked_domains,
+        blocked_discovered=blocked_discovered,
+        low_value_discovered=low_value_discovered,
     )
 
     fetched: list[dict[str, Any]] = list(prefetched_candidates)
@@ -2581,6 +2765,7 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
     phrase = intent_phrase.lower()
     for item in fetched:
         item.update(_candidate_metrics(item, query_terms, phrase))
+    usable_count = sum(1 for item in fetched if _candidate_is_usable(item))
     candidate_pool = _select_mixed_candidate_pool(fetched)
     if not candidate_pool:
         _log_event(
@@ -2588,10 +2773,11 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
             "research_no_usable_candidates",
             request_id=request_id,
             fetched=len(fetched),
+            usable=usable_count,
             query=query,
             search_mode=search_mode,
         )
-        raise ResearchError("No candidate sources remained after dedupe and ranking")
+        raise ResearchError("No usable candidate sources found after filtering")
     selected = candidate_pool[0]
     selected_text = _clean_text(selected.get("text"))
     if not selected_text and selected.get("description"):
@@ -4144,17 +4330,9 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                     validation_meta = _merge_validation_meta(validation_meta, grounding_meta)
                     final_card["validation"] = validation_meta
                     if _validation_is_weak(validation_meta):
-                        source_validation_rejections += 1
                         note = _clean_text(validation_meta.get("notes")) or "Validation marked the card as not useful."
                         attempt_errors.append(f"{provider} source_attempt_{attempt_index}: {note}")
-                        _log_event(
-                            logging.INFO,
-                            "cut_attempt_rejected",
-                            request_id=request_id,
-                            provider=provider,
-                            attempt_index=attempt_index,
-                            reason=note,
-                        )
+                        _log_event(logging.INFO, "cut_attempt_rejected", request_id=request_id, provider=provider, attempt_index=attempt_index, reason=note)
                         continue
 
                     result = {
@@ -4198,7 +4376,7 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                     _log_event(logging.INFO, "cut_complete", request_id=request_id, provider=provider, attempt_index=attempt_index, source_id=_clean_text(candidate.get("source_id") or f"S{attempt_index}"))
                     return {"ok": True, **result}
 
-                if attempts and attempt_rejections >= len(attempts) and research_round < MAX_RESEARCH_ROUNDS and _clean_text(payload.get("draft_tag")):
+                if attempts and source_validation_rejections >= len(attempts) and research_round < MAX_RESEARCH_ROUNDS and _clean_text(payload.get("draft_tag")):
                     next_round = research_round + 1
                     retry_payload = dict(payload)
                     retry_payload["_research_round"] = next_round

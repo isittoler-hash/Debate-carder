@@ -26,8 +26,12 @@ const queueProgressEl = document.getElementById('queue-progress');
 const downloadDocxBtn = document.getElementById('download-docx-btn');
 const downloadTextBtn = document.getElementById('download-text-btn');
 const sourceCandidatesEl = document.getElementById('source-candidates');
+const runtimeBadgesEl = document.getElementById('runtime-badges');
+const runtimeDetailsEl = document.getElementById('runtime-details');
+const runtimeErrorEl = document.getElementById('runtime-error');
 
 const LIBRARY_STORAGE_KEY = 'debate-card-cutter-library-v2';
+const QUEUE_PARALLELISM = 3;
 
 const fields = {
   draftTag: document.getElementById('draft-tag'),
@@ -46,6 +50,19 @@ let currentCards = [];
 let currentMode = 'local';
 let semanticSearchEnabled = true;
 let savedCards = loadSavedCards();
+let runtimeState = {
+  action: 'Idle',
+  stage: 'Ready',
+  provider: '',
+  model: '',
+  retryCount: 0,
+  requestId: '',
+  sourceAttempts: 0,
+  validationProvider: '',
+  error: '',
+  providerErrors: [],
+  httpStatus: '',
+};
 
 function setStatus(message, kind = '') {
   statusEl.textContent = message;
@@ -73,6 +90,87 @@ function setBusy(isBusy) {
   }
   if (downloadTextBtn) {
     downloadTextBtn.disabled = isBusy || savedCards.length === 0;
+  }
+}
+
+function clearRuntimeStatus() {
+  runtimeState = {
+    action: 'Idle',
+    stage: 'Ready',
+    provider: '',
+    model: '',
+    retryCount: 0,
+    requestId: '',
+    sourceAttempts: 0,
+    validationProvider: '',
+    error: '',
+    providerErrors: [],
+    httpStatus: '',
+  };
+  renderRuntimeStatus();
+}
+
+function setRuntimeStatus(patch = {}) {
+  runtimeState = {
+    ...runtimeState,
+    ...patch,
+    providerErrors: Array.isArray(patch.providerErrors)
+      ? patch.providerErrors.filter(Boolean)
+      : runtimeState.providerErrors,
+  };
+  renderRuntimeStatus();
+}
+
+function renderRuntimeStatus() {
+  if (!runtimeBadgesEl || !runtimeDetailsEl || !runtimeErrorEl) {
+    return;
+  }
+
+  runtimeBadgesEl.replaceChildren();
+  runtimeDetailsEl.replaceChildren();
+  runtimeErrorEl.textContent = '';
+  runtimeErrorEl.classList.toggle('is-visible', false);
+
+  const badgeSpecs = [
+    ['Action', runtimeState.action],
+    ['Stage', runtimeState.stage],
+    ['Provider', runtimeState.provider],
+    ['Retry', runtimeState.retryCount ? `x${runtimeState.retryCount}` : 'none'],
+  ];
+  badgeSpecs.forEach(([label, value]) => {
+    const cleaned = normalizeText(value);
+    if (!cleaned) {
+      return;
+    }
+    const chip = document.createElement('span');
+    chip.className = 'runtime-chip';
+    chip.textContent = `${label}: ${cleaned}`;
+    runtimeBadgesEl.appendChild(chip);
+  });
+
+  const details = [
+    runtimeState.model ? `Model: ${runtimeState.model}` : '',
+    runtimeState.requestId ? `Request: ${runtimeState.requestId}` : '',
+    runtimeState.httpStatus ? `HTTP: ${runtimeState.httpStatus}` : '',
+    runtimeState.sourceAttempts ? `Source attempts: ${runtimeState.sourceAttempts}` : '',
+    runtimeState.validationProvider ? `Validation: ${runtimeState.validationProvider}` : '',
+  ].filter(Boolean);
+
+  details.forEach((line) => {
+    const row = document.createElement('div');
+    row.className = 'runtime-detail';
+    row.textContent = line;
+    runtimeDetailsEl.appendChild(row);
+  });
+
+  const issueParts = [
+    normalizeText(runtimeState.error),
+    ...toArray(runtimeState.providerErrors).map((item) => normalizeText(item)).filter(Boolean),
+  ].filter(Boolean);
+
+  if (issueParts.length) {
+    runtimeErrorEl.textContent = issueParts.join(' | ');
+    runtimeErrorEl.classList.toggle('is-visible', true);
   }
 }
 
@@ -124,6 +222,76 @@ function describeApiError(data, status, fallbackLabel = 'Request failed') {
       ?? data?.message
       ?? `${fallbackLabel} with status ${status}.`;
   return requestId ? `${message} [request ${requestId}]` : message;
+}
+
+function readJsonResponse(rawText) {
+  if (!rawText) {
+    return null;
+  }
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return rawText;
+  }
+}
+
+function extractRuntimeSnapshot(endpoint, response, data, action = '') {
+  const research = data?.research && typeof data.research === 'object' ? data.research : null;
+  const meta = data?.meta && typeof data.meta === 'object' ? data.meta : {};
+  const retryCount = Number(meta.json_retry_count ?? 0) + Number(meta.validation_retry_count ?? 0);
+  return {
+    action: action || (endpoint === '/api/research' ? 'Research' : endpoint === '/api/cut' ? 'Cut' : 'Request'),
+    stage: response.ok ? (endpoint === '/api/research' ? 'Completed' : endpoint === '/api/cut' ? 'Completed' : 'Completed') : 'Failed',
+    provider: normalizeText(meta.provider ?? meta.validation_provider ?? research?.query_refinement_provider),
+    model: normalizeText(meta.model),
+    retryCount: Number.isFinite(retryCount) ? retryCount : 0,
+    requestId: normalizeText(data?.request_id ?? data?.requestId),
+    sourceAttempts: Number(meta.source_attempts ?? 0) || 0,
+    validationProvider: normalizeText(meta.validation_provider),
+    providerErrors: toArray(meta.provider_errors).map(normalizeText).filter(Boolean),
+    httpStatus: String(response.status || ''),
+    error: response.ok ? '' : describeApiError(data, response.status),
+  };
+}
+
+async function postJson(endpoint, payload, runtimePatch = {}) {
+  if (runtimePatch.action || runtimePatch.stage) {
+    setRuntimeStatus({
+      action: runtimePatch.action || runtimeState.action,
+      stage: runtimePatch.stage || 'Sending request',
+      provider: '',
+      model: '',
+      retryCount: 0,
+      requestId: '',
+      sourceAttempts: 0,
+      validationProvider: '',
+      error: '',
+      providerErrors: [],
+      httpStatus: '',
+    });
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const rawText = await response.text();
+  const data = readJsonResponse(rawText);
+  setRuntimeStatus(extractRuntimeSnapshot(endpoint, response, data, runtimePatch.action));
+
+  if (!response.ok) {
+    const error = new Error(describeApiError(data, response.status));
+    error.responseData = data;
+    error.status = response.status;
+    throw error;
+  }
+
+  return { response, data, rawText };
 }
 
 function formatScore(value, digits = 3) {
@@ -1192,6 +1360,25 @@ function renderQueueProgress(items) {
     const meta = document.createElement('span');
     meta.textContent = normalizeText(item.status) || '';
     row.append(title, meta);
+
+    const detailParts = [
+      normalizeText(item.stage),
+      normalizeText(item.provider),
+      item.retryCount ? `retry x${item.retryCount}` : '',
+      normalizeText(item.requestId) ? `req ${normalizeText(item.requestId)}` : '',
+    ].filter(Boolean);
+    if (detailParts.length) {
+      const details = document.createElement('div');
+      details.className = 'queue-progress-details';
+      details.textContent = detailParts.join(' | ');
+      row.appendChild(details);
+    }
+    if (normalizeText(item.error)) {
+      const error = document.createElement('div');
+      error.className = 'queue-progress-error';
+      error.textContent = normalizeText(item.error);
+      row.appendChild(error);
+    }
     queueProgressEl.appendChild(row);
   });
 }
@@ -1225,29 +1412,10 @@ async function researchFromTag() {
   });
 
   try {
-    const response = await fetch('/api/research', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(payload),
+    const { data } = await postJson('/api/research', payload, {
+      action: 'Research',
+      stage: 'Searching sources',
     });
-
-    const rawText = await response.text();
-    let data = null;
-
-    try {
-      data = rawText ? JSON.parse(rawText) : null;
-    } catch {
-      data = rawText;
-    }
-
-    if (!response.ok) {
-      const message = describeApiError(data, response.status);
-      throw new Error(message);
-    }
-
     const research = data?.research;
     if (!research) {
       throw new Error('No research payload was returned.');
@@ -1258,7 +1426,7 @@ async function researchFromTag() {
     metaEl.textContent = describeResearch(research) || 'Research completed.';
   } catch (error) {
     setStatus(error instanceof Error ? error.message : 'Unable to research from the draft tag.', 'error');
-    metaEl.textContent = 'The backend research endpoint may still need to be added.';
+    metaEl.textContent = 'Research failed. Inspect the runtime panel and backend logs.';
     renderSourceSummary({
       selected: {
         title: payload.draft_tag || 'Research failed',
@@ -1579,6 +1747,9 @@ function describeMeta(meta) {
   if (model) {
     parts.push(model);
   }
+  if (Number(meta.json_retry_count) > 0) {
+    parts.push(`JSON retry x${Number(meta.json_retry_count)}`);
+  }
   if (meta.validation_completed) {
     parts.push('validated');
   } else if (meta.validation_ran) {
@@ -1587,11 +1758,23 @@ function describeMeta(meta) {
   if (meta.validation_separate_call) {
     parts.push('separate validation call');
   }
+  if (normalizeText(meta.validation_provider)) {
+    parts.push(`validation via ${normalizeText(meta.validation_provider)}`);
+  }
+  if (Number(meta.validation_retry_count) > 0) {
+    parts.push(`validation retry x${Number(meta.validation_retry_count)}`);
+  }
+  if (typeof meta.source_attempts === 'number' && meta.source_attempts > 0) {
+    parts.push(`source attempts ${meta.source_attempts}`);
+  }
   if (typeof meta.card_count === 'number') {
     parts.push(`${meta.card_count} card${meta.card_count === 1 ? '' : 's'}`);
   }
   if (typeof meta.queue_count === 'number') {
     parts.push(`queue ${meta.completed_count ?? 0}/${meta.queue_count}`);
+  }
+  if (toArray(meta.provider_errors).length) {
+    parts.push(`${toArray(meta.provider_errors).length} provider warning${toArray(meta.provider_errors).length === 1 ? '' : 's'}`);
   }
 
   return parts.join(' | ') || 'Rendered from /api/cut response.';
@@ -1640,7 +1823,17 @@ function nextPaint() {
 }
 
 function updateQueueProgressItem(progress, index, status) {
-  progress[index].status = status;
+  if (typeof status === 'string') {
+    progress[index] = {
+      ...progress[index],
+      status,
+    };
+  } else {
+    progress[index] = {
+      ...progress[index],
+      ...status,
+    };
+  }
   renderQueueProgress(progress);
 }
 
@@ -1663,29 +1856,38 @@ async function runQueuedCuts() {
   }
 
   const basePayload = buildRequestBody();
-  const progress = draftTags.map((tag) => ({ tag, status: 'Waiting' }));
+  const progress = draftTags.map((tag) => ({
+    tag,
+    status: 'Waiting',
+    stage: '',
+    provider: '',
+    retryCount: 0,
+    requestId: '',
+    error: '',
+  }));
 
   setBusy(true);
-  setStatus(`Running queue for ${draftTags.length} tag${draftTags.length === 1 ? '' : 's'}...`, '');
-  metaEl.textContent = 'Running one /api/cut request per tag so each tag can research and validate independently.';
+  const workerCount = Math.min(QUEUE_PARALLELISM, draftTags.length);
+  setStatus(`Running queue for ${draftTags.length} tag${draftTags.length === 1 ? '' : 's'} with ${workerCount} parallel worker${workerCount === 1 ? '' : 's'}...`, '');
+  metaEl.textContent = 'Running one /api/cut request per tag with bounded parallel workers so each tag can research and validate independently.';
   renderQueueProgress(progress);
 
   try {
-    const successfulCards = [];
+    const successfulCardsByIndex = Array.from({ length: draftTags.length }, () => []);
     const failures = [];
+    let nextIndex = 0;
 
-    for (let index = 0; index < draftTags.length; index += 1) {
+    async function processQueueItem(index) {
       const draftTag = draftTags[index];
-      setStatus(`Queue ${index + 1}/${draftTags.length}: ${draftTag}`, '');
-      updateQueueProgressItem(progress, index, 'Refining tag meaning...');
+      updateQueueProgressItem(progress, index, { status: 'Refining tag meaning...', stage: 'Query refinement', error: '' });
       await nextPaint();
-      updateQueueProgressItem(progress, index, 'Generating academic queries...');
+      updateQueueProgressItem(progress, index, { status: 'Generating academic queries...', stage: 'Academic query pack' });
       await nextPaint();
-      updateQueueProgressItem(progress, index, 'Searching academic sources...');
+      updateQueueProgressItem(progress, index, { status: 'Searching academic sources...', stage: 'Academic search' });
       await nextPaint();
-      updateQueueProgressItem(progress, index, 'Searching think-tank sources...');
+      updateQueueProgressItem(progress, index, { status: 'Searching think-tank sources...', stage: 'Think-tank search' });
       await nextPaint();
-      updateQueueProgressItem(progress, index, 'Searching general web...');
+      updateQueueProgressItem(progress, index, { status: 'Searching general web...', stage: 'General web search' });
       await nextPaint();
 
       const payload = {
@@ -1701,91 +1903,93 @@ async function runQueuedCuts() {
       };
 
       try {
-        const researchResponse = await fetch('/api/research', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(payload),
+        const { data: researchData } = await postJson('/api/research', payload, {
+          action: 'Queue research',
+          stage: `Researching ${draftTag}`,
         });
-
-        const researchRaw = await researchResponse.text();
-        let researchData = null;
-        try {
-          researchData = researchRaw ? JSON.parse(researchRaw) : null;
-        } catch {
-          researchData = researchRaw;
-        }
-
-        if (!researchResponse.ok) {
-          const researchMessage = describeApiError(researchData, researchResponse.status, 'Research failed');
-          throw new Error(researchMessage);
-        }
-
         const research = researchData?.research ?? null;
         if (research) {
           renderQueryPreview(research);
           renderSourceSummary(research);
+          updateQueueProgressItem(progress, index, {
+            requestId: normalizeText(researchData?.request_id),
+            provider: normalizeText(research?.query_refinement_provider),
+          });
         }
-        updateQueueProgressItem(progress, index, 'Comparing 8 candidate sources...');
+        updateQueueProgressItem(progress, index, { status: 'Comparing 8 candidate sources...', stage: 'Source comparison' });
         await nextPaint();
-        updateQueueProgressItem(progress, index, 'Cutting from selected source...');
+        updateQueueProgressItem(progress, index, { status: 'Cutting from selected source...', stage: 'Cutting' });
 
-        const response = await fetch('/api/cut', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            ...payload,
-            semantic_search_enabled: semanticSearchEnabled,
-            query_pack: research?.query_pack ?? research?.queryPack ?? {},
-            research_meta: research,
-          }),
+        const { data } = await postJson('/api/cut', {
+          ...payload,
+          semantic_search_enabled: semanticSearchEnabled,
+          query_pack: research?.query_pack ?? research?.queryPack ?? {},
+          research_meta: research,
+        }, {
+          action: 'Queue cut',
+          stage: `Cutting ${draftTag}`,
         });
-
-        const rawText = await response.text();
-        let data = null;
-        try {
-          data = rawText ? JSON.parse(rawText) : null;
-        } catch {
-          data = rawText;
-        }
-
-        if (!response.ok) {
-          const message = describeApiError(data, response.status);
-          throw new Error(message);
-        }
-
         const cards = extractCards(data);
         if (!cards.length) {
           throw new Error('No card returned.');
         }
 
-        successfulCards.push(...cards);
+        successfulCardsByIndex[index] = cards;
         rememberCards(cards, data?.meta ?? {}, draftTag);
         const selected = data?.meta?.research?.selected ?? {};
-        updateQueueProgressItem(progress, index, 'Validating final card...');
+        updateQueueProgressItem(progress, index, {
+          status: 'Validating final card...',
+          stage: 'Validation',
+          provider: normalizeText(data?.meta?.provider),
+          retryCount: Number(data?.meta?.json_retry_count ?? 0) + Number(data?.meta?.validation_retry_count ?? 0),
+          requestId: normalizeText(data?.request_id),
+        });
         await nextPaint();
-        updateQueueProgressItem(progress, index, [
-          'Done',
-          normalizeText(selected.source_id) || '',
-          normalizeText(selected.title) || '',
-          normalizeText(selected.url) || '',
-        ].filter(Boolean).join(' | '));
+        updateQueueProgressItem(progress, index, {
+          status: [
+            'Done',
+            normalizeText(selected.source_id) || '',
+            normalizeText(selected.title) || '',
+            normalizeText(selected.url) || '',
+          ].filter(Boolean).join(' | '),
+          stage: 'Completed',
+          provider: normalizeText(data?.meta?.provider),
+          retryCount: Number(data?.meta?.json_retry_count ?? 0) + Number(data?.meta?.validation_retry_count ?? 0),
+          requestId: normalizeText(data?.request_id),
+          error: '',
+        });
         if (data?.meta?.research) {
           renderSourceSummary(data.meta.research);
           renderQueryPreview(data.meta.research);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'failed';
+        const requestId = normalizeText(error?.responseData?.request_id ?? error?.responseData?.requestId);
         failures.push(`${draftTag}: ${message}`);
-        progress[index].status = `Failed: ${message}`;
-        renderQueueProgress(progress);
+        updateQueueProgressItem(progress, index, {
+          status: `Failed: ${message}`,
+          stage: 'Failed',
+          requestId,
+          error: message,
+        });
       }
     }
+
+    async function runWorker() {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= draftTags.length) {
+          return;
+        }
+        setStatus(`Queue ${index + 1}/${draftTags.length}: ${draftTags[index]}`, '');
+        await processQueueItem(index);
+      }
+    }
+
+    await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+
+    const successfulCards = successfulCardsByIndex.flat();
 
     if (successfulCards.length) {
       renderCards(successfulCards);
@@ -1866,29 +2070,10 @@ form.addEventListener('submit', async (event) => {
   metaEl.textContent = 'Sending request to /api/cut.';
 
   try {
-    const response = await fetch('/api/cut', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(payload),
+    const { data } = await postJson('/api/cut', payload, {
+      action: 'Cut',
+      stage: shouldAutoResearch ? 'Researching then cutting' : 'Cutting card',
     });
-
-    const rawText = await response.text();
-    let data = null;
-
-    try {
-      data = rawText ? JSON.parse(rawText) : null;
-    } catch {
-      data = rawText;
-    }
-
-    if (!response.ok) {
-      const message = describeApiError(data, response.status);
-      throw new Error(message);
-    }
-
     const cards = extractCards(data);
     if (!cards.length) {
       renderEmptyState();
@@ -1911,7 +2096,7 @@ form.addEventListener('submit', async (event) => {
   } catch (error) {
     renderEmptyState();
     setStatus(error instanceof Error ? error.message : 'Unable to cut the card.', 'error');
-    metaEl.textContent = 'The frontend is ready; the backend endpoint may still need to be added.';
+    metaEl.textContent = 'Cut failed. Inspect the runtime panel and backend logs.';
   } finally {
     setBusy(false);
   }
@@ -2007,6 +2192,7 @@ setMode('local');
 renderSourceSummary();
 renderQueryPreview({ search_mode: getSearchModeLabel().toLowerCase(), query_pack: {} });
 renderSavedCardsList();
+clearRuntimeStatus();
 
 Object.values(fields).forEach((field) => {
   field.addEventListener('input', syncPromptPreview);

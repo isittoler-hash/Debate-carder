@@ -629,6 +629,65 @@ h1 {
   align-self: center;
 }
 
+.runtime-debug {
+  min-width: min(100%, 420px);
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: var(--shadow-soft);
+}
+
+.runtime-debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.runtime-badges,
+.runtime-details {
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-badges {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  margin-bottom: 10px;
+}
+
+.runtime-chip {
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(122, 216, 255, 0.18);
+  background: rgba(122, 216, 255, 0.08);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.runtime-detail {
+  color: var(--muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.runtime-error {
+  display: none;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 107, 107, 0.22);
+  background: rgba(255, 107, 107, 0.08);
+  color: var(--danger);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.runtime-error.is-visible {
+  display: block;
+}
+
 .output {
   padding: 22px;
 }
@@ -819,6 +878,21 @@ h1 {
 .queue-progress li span {
   color: var(--muted);
   line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.queue-progress-details {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.queue-progress-error {
+  margin-top: 8px;
+  color: var(--danger);
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
