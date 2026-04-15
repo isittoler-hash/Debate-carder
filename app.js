@@ -132,10 +132,9 @@ function renderRuntimeStatus() {
   runtimeErrorEl.classList.toggle('is-visible', false);
 
   const badgeSpecs = [
-    ['Action', runtimeState.action],
-    ['Stage', runtimeState.stage],
-    ['Provider', runtimeState.provider],
-    ['Retry', runtimeState.retryCount ? `x${runtimeState.retryCount}` : 'none'],
+    ['Task', runtimeState.action],
+    ['Step', runtimeState.stage],
+    ['Tries', runtimeState.retryCount ? `x${runtimeState.retryCount}` : 'none'],
   ];
   badgeSpecs.forEach(([label, value]) => {
     const cleaned = normalizeText(value);
@@ -149,11 +148,8 @@ function renderRuntimeStatus() {
   });
 
   const details = [
-    runtimeState.model ? `Model: ${runtimeState.model}` : '',
-    runtimeState.requestId ? `Request: ${runtimeState.requestId}` : '',
-    runtimeState.httpStatus ? `HTTP: ${runtimeState.httpStatus}` : '',
-    runtimeState.sourceAttempts ? `Source attempts: ${runtimeState.sourceAttempts}` : '',
-    runtimeState.validationProvider ? `Validation: ${runtimeState.validationProvider}` : '',
+    runtimeState.sourceAttempts ? `Sources checked: ${runtimeState.sourceAttempts}` : '',
+    runtimeState.httpStatus && !normalizeText(runtimeState.error) ? `Status: ${runtimeState.httpStatus}` : '',
   ].filter(Boolean);
 
   details.forEach((line) => {
@@ -187,7 +183,7 @@ function setSearchMode(enabled) {
 }
 
 function getSearchModeLabel() {
-  return semanticSearchEnabled ? 'Semantic search' : 'Literal search';
+  return semanticSearchEnabled ? 'Meaning match' : 'Exact wording';
 }
 
 function setMode(nextMode) {
@@ -200,10 +196,10 @@ function setMode(nextMode) {
   modeChatgptBtn.setAttribute('aria-selected', String(isChatgpt));
   chatgptPanel.classList.toggle('is-hidden', !isChatgpt);
   chatgptPanel.setAttribute('aria-hidden', String(!isChatgpt));
-  submitBtn.querySelector('.button-label').textContent = isChatgpt ? 'Cut card via backend' : 'Cut card';
+  submitBtn.querySelector('.button-label').textContent = isChatgpt ? 'Build card' : 'Cut card';
 
   if (isChatgpt) {
-    metaEl.textContent = 'Manual ChatGPT workflow uses copy/paste only.';
+    metaEl.textContent = 'ChatGPT handoff is ready.';
   } else if (!currentCards.length) {
     metaEl.textContent = '';
   }
@@ -775,12 +771,12 @@ function parseJsonLike(text) {
     const firstBracket = cleaned.indexOf('[');
     const start = [firstBrace, firstBracket].filter((index) => index >= 0).sort((a, b) => a - b)[0];
     if (start === undefined) {
-      throw new Error('Could not find JSON in the pasted response.');
+      throw new Error('Could not find a usable result in the pasted text.');
     }
 
     const end = Math.max(cleaned.lastIndexOf('}'), cleaned.lastIndexOf(']'));
     if (end <= start) {
-      throw new Error('Could not find complete JSON in the pasted response.');
+      throw new Error('Could not find a complete result in the pasted text.');
     }
 
     return JSON.parse(cleaned.slice(start, end + 1));
@@ -986,7 +982,7 @@ function renderEmptyState() {
   cardsEl.innerHTML = '';
   cardsEl.className = 'cards empty-state';
   copyAllBtn.disabled = true;
-  hintEl.textContent = 'No card yet. Paste text or enter a draft tag to research a source.';
+  hintEl.textContent = 'No card yet. Paste evidence or enter a claim to start.';
   metaEl.textContent = '';
   renderQueryPreview({
     status: 'Waiting for research',
@@ -1064,14 +1060,14 @@ function renderQueryPreview(research) {
   header.className = 'query-preview-head';
   const badge = document.createElement('span');
   badge.className = 'mini-badge';
-  badge.textContent = searchMode.includes('literal') ? 'Literal search' : 'Semantic search';
+  badge.textContent = searchMode.includes('literal') ? 'Exact wording' : 'Meaning match';
   const sourceLine = document.createElement('div');
   sourceLine.className = 'query-preview-source';
   const refinementLabel = refinementUsed === null
-    ? 'Refinement status unavailable'
+    ? 'Search plan not available yet'
     : refinementUsed
-      ? `AI refinement${refinementProvider ? ` via ${refinementProvider}` : ''}`
-      : 'Heuristic fallback';
+      ? 'Search plan adapted to the claim'
+      : 'Using the claim as written';
   sourceLine.textContent = refinementLabel;
   header.append(badge, sourceLine);
   queryPreviewEl.appendChild(header);
@@ -1081,7 +1077,7 @@ function renderQueryPreview(research) {
     intent.className = 'query-preview-intent';
     const label = document.createElement('div');
     label.className = 'label';
-    label.textContent = 'Intent claim';
+    label.textContent = 'What the search is aiming to prove';
     const value = document.createElement('div');
     value.className = 'muted-block';
     value.textContent = intentClaim;
@@ -1099,12 +1095,12 @@ function renderQueryPreview(research) {
   }
 
   const packSections = [
-    ['Semantic queries', queryPack?.semantic_queries],
-    ['Academic queries', queryPack?.academic_queries],
-    ['Think-tank queries', queryPack?.think_tank_queries],
-    ['General web queries', queryPack?.fallback_web_queries],
-    ['Must-have terms', queryPack?.must_have_terms],
-    ['Avoid terms', queryPack?.avoid_terms],
+    ['Search phrases', queryPack?.semantic_queries],
+    ['Books and journals', queryPack?.academic_queries],
+    ['Policy sources', queryPack?.think_tank_queries],
+    ['Web sources', queryPack?.fallback_web_queries],
+    ['Anchor terms', queryPack?.must_have_terms],
+    ['Filtered out', queryPack?.avoid_terms],
   ];
 
   packSections.forEach(([title, items]) => {
@@ -1120,7 +1116,7 @@ function renderQueryPreview(research) {
     executed.className = 'query-preview-section';
     const heading = document.createElement('div');
     heading.className = 'label';
-    heading.textContent = 'Executed queries';
+    heading.textContent = 'Searches tried';
     executed.appendChild(heading);
 
     const list = document.createElement('div');
@@ -1142,7 +1138,7 @@ function renderQueryPreview(research) {
   if (!hasDetails) {
     const empty = document.createElement('div');
     empty.className = 'query-preview-empty';
-    empty.textContent = `Search mode is ${getSearchModeLabel().toLowerCase()}. Refined queries will appear here after research.`;
+    empty.textContent = `Search mode is ${getSearchModeLabel().toLowerCase()}. Your search plan will appear here after you look for evidence.`;
     queryPreviewEl.appendChild(empty);
   }
 }
@@ -1189,25 +1185,19 @@ function describeResearch(research) {
   const queryPack = research?.query_pack ?? research?.queryPack ?? {};
   const parts = [];
 
-  if (normalizeText(selected.engine)) {
-    parts.push(`source: ${normalizeText(selected.engine)}`);
-  }
   if (normalizeText(selected.title)) {
-    parts.push(normalizeText(selected.title));
+    parts.push(`Picked: ${normalizeText(selected.title)}`);
   }
   if (normalizeText(research?.search_mode ?? queryPack?.search_mode)) {
-    parts.push(`mode: ${normalizeText(research.search_mode ?? queryPack.search_mode)}`);
+    parts.push(`Search style: ${normalizeText(research.search_mode ?? queryPack.search_mode)}`);
   }
   if (normalizeText(queryPack?.intent_claim)) {
-    parts.push(`intent: ${normalizeText(queryPack.intent_claim)}`);
-  }
-  if (normalizeText(research?.query)) {
-    parts.push(`query: ${normalizeText(research.query)}`);
+    parts.push(`Aiming at: ${normalizeText(queryPack.intent_claim)}`);
   }
   if (typeof research?.query_refinement_used === 'boolean') {
-    parts.push(research.query_refinement_used ? 'AI refined' : 'heuristic fallback');
+    parts.push(research.query_refinement_used ? 'Search plan adjusted to match the claim' : 'Used the claim as written');
   } else if (typeof queryPack?.query_refinement_used === 'boolean') {
-    parts.push(queryPack.query_refinement_used ? 'AI refined' : 'heuristic fallback');
+    parts.push(queryPack.query_refinement_used ? 'Search plan adjusted to match the claim' : 'Used the claim as written');
   }
 
   return parts.join(' | ');
@@ -1232,34 +1222,43 @@ function renderSourceCandidates(research) {
     head.className = 'source-candidate-head';
     const title = document.createElement('div');
     title.className = 'source-candidate-title';
-    title.textContent = `${normalizeText(source.source_id) || `S${index + 1}`}: ${normalizeText(source.title) || 'Untitled source'}`;
+    title.textContent = normalizeText(source.title) || `Source ${index + 1}`;
     head.appendChild(title);
 
     const score = document.createElement('span');
     score.className = 'tag';
-    score.textContent = `Cred ${formatScore(source.credibility_score) || '0.000'}`;
+    score.textContent = `Trust ${formatScore(source.credibility_score) || '0.000'}`;
     head.appendChild(score);
 
     const fit = document.createElement('span');
     fit.className = 'tag tag-muted';
-    fit.textContent = `Fit ${formatScore(source.topical_fit_score ?? source.score) || '0.000'}`;
+    fit.textContent = `Match ${formatScore(source.topical_fit_score ?? source.score) || '0.000'}`;
     head.appendChild(fit);
 
     const quote = document.createElement('span');
     quote.className = 'tag tag-muted';
-    quote.textContent = `Quote ${formatScore(source.quote_strength_score) || '0.000'}`;
+    quote.textContent = `Evidence ${formatScore(source.quote_strength_score) || '0.000'}`;
     head.appendChild(quote);
 
     if (normalizeText(source.source_class)) {
       const classTag = document.createElement('span');
       classTag.className = 'tag tag-muted';
-      classTag.textContent = normalizeText(source.source_class);
+      const sourceClass = normalizeText(source.source_class);
+      const sourceClassLabel = {
+        peer_reviewed: 'Journal or book',
+        preprint: 'Working draft',
+        working_paper: 'Working paper',
+        think_tank: 'Policy source',
+        general_web: 'Web source',
+        summary_or_news: 'Summary page',
+      }[sourceClass] || sourceClass;
+      classTag.textContent = sourceClassLabel;
       head.appendChild(classTag);
     }
     if (typeof source.paper_verified === 'boolean') {
       const paperTag = document.createElement('span');
       paperTag.className = source.paper_verified ? 'tag' : 'tag tag-warn';
-      paperTag.textContent = source.paper_verified ? 'Paper verified' : 'Paper unverified';
+      paperTag.textContent = source.paper_verified ? 'Full text found' : 'Full text unclear';
       head.appendChild(paperTag);
     }
     item.appendChild(head);
@@ -1314,20 +1313,18 @@ function renderSourceSummary(research) {
       label: 'Search mode',
       value: [
         normalizeText(research?.search_mode),
-        normalizeText(research?.query_refinement_used === true ? 'AI refinement' : research?.query_refinement_used === false ? 'heuristic fallback' : ''),
+        normalizeText(research?.query_refinement_used === true ? 'Search plan adjusted to the claim' : research?.query_refinement_used === false ? 'Using the claim as written' : ''),
       ].filter(Boolean).join(' | ') || getSearchModeLabel(),
     },
     {
       label: 'Intent claim',
-      value: normalizeText(research?.query_pack?.intent_claim) || normalizeText(research?.intent_claim) || 'Waiting for query refinement',
+      value: normalizeText(research?.query_pack?.intent_claim) || normalizeText(research?.intent_claim) || 'Waiting for the search plan',
     },
     {
       label: 'Source details',
       value: [
-        normalizeText(selected.source_id),
         normalizeText(selected.author),
         normalizeText(selected.date),
-        formatScore(selected.credibility_score) ? `Cred ${formatScore(selected.credibility_score)}` : '',
         normalizeText(selected.credibility_notes),
         normalizeText(selected.url),
       ].filter(Boolean).join(' | ') || 'No source yet',
@@ -1363,9 +1360,7 @@ function renderQueueProgress(items) {
 
     const detailParts = [
       normalizeText(item.stage),
-      normalizeText(item.provider),
-      item.retryCount ? `retry x${item.retryCount}` : '',
-      normalizeText(item.requestId) ? `req ${normalizeText(item.requestId)}` : '',
+      item.retryCount ? `extra tries x${item.retryCount}` : '',
     ].filter(Boolean);
     if (detailParts.length) {
       const details = document.createElement('div');
@@ -1387,13 +1382,13 @@ async function researchFromTag() {
   const payload = buildRequestBody();
 
   if (!payload.draft_tag && !payload.source_url) {
-    setStatus('Enter a draft tag or source URL before researching.', 'error');
+    setStatus('Enter a claim or source URL first.', 'error');
     return;
   }
 
   setBusy(true);
-  setStatus('Refining tag meaning and searching sources...', '');
-  metaEl.textContent = 'Sending request to /api/research.';
+  setStatus('Looking for a useful source...', '');
+  metaEl.textContent = 'Searching likely sources.';
   renderSourceSummary({
     selected: {
       title: payload.draft_tag || 'Research in progress',
@@ -1401,12 +1396,12 @@ async function researchFromTag() {
       date: '',
       url: payload.source_url,
     },
-    status: 'Researching likely sources',
-    mode: 'Fetching and ranking candidate sources',
+    status: 'Looking for evidence',
+    mode: 'Checking likely sources and ranking the best fit',
     search_mode: getSearchModeLabel().toLowerCase(),
   });
   renderQueryPreview({
-    status: 'Researching likely sources',
+    status: 'Looking for evidence',
     search_mode: getSearchModeLabel().toLowerCase(),
     query_pack: {},
   });
@@ -1418,15 +1413,15 @@ async function researchFromTag() {
     });
     const research = data?.research;
     if (!research) {
-      throw new Error('No research payload was returned.');
+      throw new Error('No source details came back.');
     }
 
     applyResearchResult(research);
-    setStatus('Found a likely source and filled the evidence form.', 'success');
-    metaEl.textContent = describeResearch(research) || 'Research completed.';
+    setStatus('Found a likely source and filled it in.', 'success');
+    metaEl.textContent = describeResearch(research) || 'Source search finished.';
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : 'Unable to research from the draft tag.', 'error');
-    metaEl.textContent = 'Research failed. Inspect the runtime panel and backend logs.';
+    setStatus(error instanceof Error ? error.message : 'Could not find a useful source from that claim.', 'error');
+    metaEl.textContent = 'Try adding source text or a direct source URL.';
     renderSourceSummary({
       selected: {
         title: payload.draft_tag || 'Research failed',
@@ -1435,7 +1430,7 @@ async function researchFromTag() {
         url: payload.source_url,
       },
       status: 'Research failed',
-      mode: 'Check the backend logs or try a direct source URL',
+      mode: 'Try adding source text or a direct source URL',
     });
   } finally {
     setBusy(false);
@@ -1445,18 +1440,18 @@ async function researchFromTag() {
 function importCardsFromText(rawText) {
   const cleaned = stripCodeFences(rawText);
   if (!cleaned) {
-    throw new Error('Paste JSON before importing cards.');
+    throw new Error('Paste the ChatGPT result before importing.');
   }
 
   const parsed = parseJsonLike(cleaned);
   const cards = extractCards(parsed);
   if (!cards.length) {
-    throw new Error('No cards were found in the imported JSON.');
+    throw new Error('No cards were found in the pasted result.');
   }
 
   rememberCards(cards, { provider: 'chatgpt_manual' }, buildRequestBody().draft_tag);
   renderCards(cards);
-  metaEl.textContent = 'Imported from ChatGPT JSON.';
+  metaEl.textContent = 'Imported from ChatGPT.';
   setStatus(`Imported ${cards.length} card.`, 'success');
 }
 
@@ -1728,56 +1723,35 @@ function renderSavedCardsList() {
 
 function describeMeta(meta) {
   if (!meta || typeof meta !== 'object') {
-    return 'Rendered from /api/cut response.';
+    return 'Card ready.';
   }
 
-  const mode = normalizeText(meta.mode);
-  const model = normalizeText(meta.model);
   const parts = [];
 
-  if (mode) {
-    parts.push(mode === 'ai' ? 'AI cut' : 'Fallback cut');
-  }
-  if (normalizeText(meta.provider)) {
-    parts.push(normalizeText(meta.provider));
-  }
-  if (meta.experimental) {
-    parts.push('experimental bridge');
-  }
-  if (model) {
-    parts.push(model);
-  }
-  if (Number(meta.json_retry_count) > 0) {
-    parts.push(`JSON retry x${Number(meta.json_retry_count)}`);
+  if (meta.fallback_used) {
+    parts.push('Built from a rough backup pass');
+  } else {
+    parts.push('Card ready');
   }
   if (meta.validation_completed) {
-    parts.push('validated');
+    parts.push('Checked against the source');
   } else if (meta.validation_ran) {
-    parts.push('validation fallback');
-  }
-  if (meta.validation_separate_call) {
-    parts.push('separate validation call');
-  }
-  if (normalizeText(meta.validation_provider)) {
-    parts.push(`validation via ${normalizeText(meta.validation_provider)}`);
-  }
-  if (Number(meta.validation_retry_count) > 0) {
-    parts.push(`validation retry x${Number(meta.validation_retry_count)}`);
+    parts.push('Source check finished');
   }
   if (typeof meta.source_attempts === 'number' && meta.source_attempts > 0) {
-    parts.push(`source attempts ${meta.source_attempts}`);
+    parts.push(`${meta.source_attempts} source${meta.source_attempts === 1 ? '' : 's'} checked`);
   }
   if (typeof meta.card_count === 'number') {
     parts.push(`${meta.card_count} card${meta.card_count === 1 ? '' : 's'}`);
   }
   if (typeof meta.queue_count === 'number') {
-    parts.push(`queue ${meta.completed_count ?? 0}/${meta.queue_count}`);
+    parts.push(`Batch ${meta.completed_count ?? 0}/${meta.queue_count}`);
   }
   if (toArray(meta.provider_errors).length) {
-    parts.push(`${toArray(meta.provider_errors).length} provider warning${toArray(meta.provider_errors).length === 1 ? '' : 's'}`);
+    parts.push(`${toArray(meta.provider_errors).length} issue${toArray(meta.provider_errors).length === 1 ? '' : 's'} to review`);
   }
 
-  return parts.join(' | ') || 'Rendered from /api/cut response.';
+  return parts.join(' | ') || 'Card ready.';
 }
 
 async function copyToClipboard(text) {
@@ -1851,7 +1825,7 @@ async function triggerDownload(filename, blob) {
 async function runQueuedCuts() {
   const draftTags = parseQueuedTags();
   if (!draftTags.length) {
-    setStatus('Add at least one draft tag to the queue.', 'error');
+    setStatus('Add at least one claim to the batch.', 'error');
     return;
   }
 
@@ -1868,8 +1842,8 @@ async function runQueuedCuts() {
 
   setBusy(true);
   const workerCount = Math.min(QUEUE_PARALLELISM, draftTags.length);
-  setStatus(`Running queue for ${draftTags.length} tag${draftTags.length === 1 ? '' : 's'} with ${workerCount} parallel worker${workerCount === 1 ? '' : 's'}...`, '');
-  metaEl.textContent = 'Running one /api/cut request per tag with bounded parallel workers so each tag can research and validate independently.';
+  setStatus(`Running ${draftTags.length} claim${draftTags.length === 1 ? '' : 's'} in a batch...`, '');
+  metaEl.textContent = `Working through ${draftTags.length} claim${draftTags.length === 1 ? '' : 's'} with ${workerCount} lane${workerCount === 1 ? '' : 's'}.`;
   renderQueueProgress(progress);
 
   try {
@@ -1879,15 +1853,15 @@ async function runQueuedCuts() {
 
     async function processQueueItem(index) {
       const draftTag = draftTags[index];
-      updateQueueProgressItem(progress, index, { status: 'Refining tag meaning...', stage: 'Query refinement', error: '' });
+      updateQueueProgressItem(progress, index, { status: 'Shaping the claim...', stage: 'Search setup', error: '' });
       await nextPaint();
-      updateQueueProgressItem(progress, index, { status: 'Generating academic queries...', stage: 'Academic query pack' });
+      updateQueueProgressItem(progress, index, { status: 'Looking through books and journals...', stage: 'Books and journals' });
       await nextPaint();
-      updateQueueProgressItem(progress, index, { status: 'Searching academic sources...', stage: 'Academic search' });
+      updateQueueProgressItem(progress, index, { status: 'Checking policy sources...', stage: 'Policy sources' });
       await nextPaint();
-      updateQueueProgressItem(progress, index, { status: 'Searching think-tank sources...', stage: 'Think-tank search' });
+      updateQueueProgressItem(progress, index, { status: 'Checking the web...', stage: 'Web search' });
       await nextPaint();
-      updateQueueProgressItem(progress, index, { status: 'Searching general web...', stage: 'General web search' });
+      updateQueueProgressItem(progress, index, { status: 'Picking the best source...', stage: 'Source choice' });
       await nextPaint();
 
       const payload = {
@@ -1916,9 +1890,9 @@ async function runQueuedCuts() {
             provider: normalizeText(research?.query_refinement_provider),
           });
         }
-        updateQueueProgressItem(progress, index, { status: 'Comparing 8 candidate sources...', stage: 'Source comparison' });
+        updateQueueProgressItem(progress, index, { status: 'Comparing likely sources...', stage: 'Source choice' });
         await nextPaint();
-        updateQueueProgressItem(progress, index, { status: 'Cutting from selected source...', stage: 'Cutting' });
+        updateQueueProgressItem(progress, index, { status: 'Building the card...', stage: 'Card build' });
 
         const { data } = await postJson('/api/cut', {
           ...payload,
@@ -1938,8 +1912,8 @@ async function runQueuedCuts() {
         rememberCards(cards, data?.meta ?? {}, draftTag);
         const selected = data?.meta?.research?.selected ?? {};
         updateQueueProgressItem(progress, index, {
-          status: 'Validating final card...',
-          stage: 'Validation',
+          status: 'Checking the final wording...',
+          stage: 'Final check',
           provider: normalizeText(data?.meta?.provider),
           retryCount: Number(data?.meta?.json_retry_count ?? 0) + Number(data?.meta?.validation_retry_count ?? 0),
           requestId: normalizeText(data?.request_id),
@@ -1948,11 +1922,9 @@ async function runQueuedCuts() {
         updateQueueProgressItem(progress, index, {
           status: [
             'Done',
-            normalizeText(selected.source_id) || '',
             normalizeText(selected.title) || '',
-            normalizeText(selected.url) || '',
           ].filter(Boolean).join(' | '),
-          stage: 'Completed',
+          stage: 'Ready',
           provider: normalizeText(data?.meta?.provider),
           retryCount: Number(data?.meta?.json_retry_count ?? 0) + Number(data?.meta?.validation_retry_count ?? 0),
           requestId: normalizeText(data?.request_id),
@@ -1967,7 +1939,7 @@ async function runQueuedCuts() {
         const requestId = normalizeText(error?.responseData?.request_id ?? error?.responseData?.requestId);
         failures.push(`${draftTag}: ${message}`);
         updateQueueProgressItem(progress, index, {
-          status: `Failed: ${message}`,
+          status: `Could not finish this card`,
           stage: 'Failed',
           requestId,
           error: message,
@@ -1999,9 +1971,9 @@ async function runQueuedCuts() {
 
     const failureSuffix = failures.length ? ` ${failures.length} failed.` : '';
     setStatus(`Queue finished with ${successfulCards.length} card${successfulCards.length === 1 ? '' : 's'}.${failureSuffix}`, failures.length ? 'error' : 'success');
-    metaEl.textContent = failures.length ? failures.join(' | ') : `Queued ${successfulCards.length} card${successfulCards.length === 1 ? '' : 's'} successfully.`;
+    metaEl.textContent = failures.length ? failures.join(' | ') : `Finished ${successfulCards.length} card${successfulCards.length === 1 ? '' : 's'}.`;
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : 'Unable to run the queue.', 'error');
+    setStatus(error instanceof Error ? error.message : 'Could not finish the batch.', 'error');
   } finally {
     setBusy(false);
   }
@@ -2010,9 +1982,9 @@ async function runQueuedCuts() {
 copyPromptBtn.addEventListener('click', async () => {
   try {
     await copyToClipboard(buildChatgptPrompt());
-    setStatus('Copied the ChatGPT prompt.', 'success');
+    setStatus('Copied the ChatGPT instructions.', 'success');
   } catch {
-    setStatus('Could not copy the prompt.', 'error');
+    setStatus('Could not copy the instructions.', 'error');
   }
 });
 
@@ -2026,13 +1998,13 @@ renderImportBtn.addEventListener('click', () => {
 
 modeLocalBtn.addEventListener('click', () => {
   setMode('local');
-  setStatus('Using the local model workflow.', '');
+  setStatus('Quick cut is ready.', '');
 });
 
 modeChatgptBtn.addEventListener('click', () => {
   setMode('chatgpt');
   syncPromptPreview();
-  setStatus('Using the manual ChatGPT workflow.', '');
+  setStatus('ChatGPT handoff is ready.', '');
 });
 
 researchBtn.addEventListener('click', requestResearchMode);
@@ -2061,13 +2033,13 @@ form.addEventListener('submit', async (event) => {
   const shouldAutoResearch = !hasCompleteSourceInputs(payload) && !!(payload.draft_tag || payload.source_url);
 
   if (!payload.article_text && !payload.source_url && !payload.draft_tag) {
-    setStatus('Paste source text, enter a draft tag, or provide a source URL before cutting.', 'error');
+    setStatus('Paste evidence, enter a claim, or provide a source URL before cutting.', 'error');
     return;
   }
 
   setBusy(true);
-  setStatus(shouldAutoResearch ? 'Researching missing source fields, then cutting one card...' : 'Cutting one card...', '');
-  metaEl.textContent = 'Sending request to /api/cut.';
+  setStatus(shouldAutoResearch ? 'Looking for a source, then building the card...' : 'Building the card...', '');
+  metaEl.textContent = 'Working on your card.';
 
   try {
     const { data } = await postJson('/api/cut', payload, {
@@ -2077,8 +2049,8 @@ form.addEventListener('submit', async (event) => {
     const cards = extractCards(data);
     if (!cards.length) {
       renderEmptyState();
-      setStatus('No card was returned by /api/cut.', 'error');
-      metaEl.textContent = 'Check the endpoint response shape.';
+      setStatus('No card came back.', 'error');
+      metaEl.textContent = 'Try again with source text or a direct source URL.';
       return;
     }
 
@@ -2096,7 +2068,7 @@ form.addEventListener('submit', async (event) => {
   } catch (error) {
     renderEmptyState();
     setStatus(error instanceof Error ? error.message : 'Unable to cut the card.', 'error');
-    metaEl.textContent = 'Cut failed. Inspect the runtime panel and backend logs.';
+    metaEl.textContent = 'We could not build a card from that yet. Try adding source text or a direct source URL.';
   } finally {
     setBusy(false);
   }
@@ -2118,7 +2090,7 @@ copyAllBtn.addEventListener('click', async () => {
 queueAddBtn?.addEventListener('click', () => {
   const draftTag = normalizeText(fields.draftTag.value);
   if (!draftTag) {
-    setStatus('Enter a draft tag before adding it to the queue.', 'error');
+    setStatus('Enter a claim before adding it to the batch.', 'error');
     return;
   }
 
@@ -2127,7 +2099,7 @@ queueAddBtn?.addEventListener('click', () => {
     existing.push(draftTag);
     queueTagsEl.value = `${existing.join('\n')}\n`;
   }
-  setStatus('Added the current draft tag to the queue.', 'success');
+  setStatus('Added the current claim to the batch.', 'success');
 });
 
 queueRunBtn?.addEventListener('click', () => {
@@ -2149,12 +2121,12 @@ downloadTextBtn?.addEventListener('click', async () => {
 downloadDocxBtn?.addEventListener('click', async () => {
   const cards = savedCards.map((entry) => entry.card);
   if (!cards.length) {
-    setStatus('Cut or save at least one card before downloading .docx.', 'error');
+    setStatus('Cut or save at least one card before downloading the Word file.', 'error');
     return;
   }
 
   setBusy(true);
-  setStatus('Building the .docx card file...', '');
+  setStatus('Preparing the Word file...', '');
   try {
     const response = await fetch('/api/export/docx', {
       method: 'POST',
@@ -2177,9 +2149,9 @@ downloadDocxBtn?.addEventListener('click', async () => {
     const filename = match?.[1] || `${buildExportTitle()}.verbatim.docx`;
     const blob = await response.blob();
     await triggerDownload(filename, blob);
-    setStatus('Downloaded the .docx card file.', 'success');
+    setStatus('Downloaded the Word file.', 'success');
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : 'Unable to download the .docx export.', 'error');
+    setStatus(error instanceof Error ? error.message : 'Could not download the Word file.', 'error');
   } finally {
     setBusy(false);
   }

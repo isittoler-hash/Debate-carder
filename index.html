@@ -4,237 +4,248 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Debate Card Cutter</title>
-  <meta name="description" content="Zero-dependency debate card cutter for one-card iterative research">
+  <meta name="description" content="Build debate cards from a claim, a source, or a short batch list.">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="ambient ambient-a"></div>
-  <div class="ambient ambient-b"></div>
-
   <main class="shell">
-    <section class="hero">
-      <div class="eyebrow">AI debate card cutter</div>
-      <h1>Cut source text into one clean debate card at a time.</h1>
-      <p class="lede">
-        Use the backend path for local-model cutting, or use ChatGPT manually without API calls.
-        The app follows the file pattern: tag line, cite line, then evidence paragraph, with a validation pass before copy.
-      </p>
-      <div class="workflow-map" aria-label="Card cutting workflow">
-        <div class="workflow-step">
-          <span class="workflow-step-index">1</span>
-          <strong>Tag</strong>
-          <p>Enter the rough debate claim you want to cut.</p>
-        </div>
-        <div class="workflow-step">
-          <span class="workflow-step-index">2</span>
-          <strong>Research</strong>
-          <p>Find the most likely source and fill the evidence form.</p>
-        </div>
-        <div class="workflow-step">
-          <span class="workflow-step-index">3</span>
-          <strong>Cut</strong>
-          <p>Return one formatted card with cite line, underlined support, highlighted passages, and context.</p>
-        </div>
-        <div class="workflow-step">
-          <span class="workflow-step-index">4</span>
-          <strong>Validate</strong>
-          <p>Check whether the card is actually useful, then revise it if needed.</p>
-        </div>
-        <div class="workflow-step">
-          <span class="workflow-step-index">5</span>
-          <strong>Copy</strong>
-          <p>Copy the final debate-ready card block.</p>
-        </div>
+    <header class="app-header">
+      <div class="app-header-copy">
+        <div class="eyebrow">Debate card cutter</div>
+        <h1>Tag in. Queue it. Cut the card.</h1>
+        <p class="lede">Start with a claim, pull in a source, and build a card you can actually use. Extra search details and handoff tools stay tucked away until you need them.</p>
       </div>
-    </section>
-
-    <section class="panel mode-panel">
-      <div class="section-head">
-        <div>
-          <h2>Choose a workflow</h2>
-          <p>Local model via backend, or manual ChatGPT copy/paste and validation.</p>
-        </div>
+      <div class="app-header-image-wrap">
+        <img
+          class="app-header-image"
+          src="https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=1200&q=80"
+          alt="Research notes and a marked-up document on a desk"
+        >
       </div>
-      <div class="mode-switch" role="tablist" aria-label="Card cutting workflow">
-        <button id="mode-local" class="mode-button is-active" type="button" role="tab" aria-selected="true">
-          Local model
-        </button>
-        <button id="mode-chatgpt" class="mode-button" type="button" role="tab" aria-selected="false">
-          ChatGPT manual
-        </button>
-      </div>
-      <p class="notice" id="workflow-note">
-        ChatGPT subscription still is not an official app API. Use the manual workflow for the supported path, or point the backend at an experimental external bridge if you choose to run one.
-      </p>
-    </section>
+    </header>
 
-    <section class="panel">
-      <form id="cut-form" class="form">
-        <label class="field field-hero">
-          <span>Draft tag</span>
-          <input id="draft-tag" name="draftTag" type="text" placeholder="Green steel hurts manufacturing costs" autocomplete="off">
-          <small>Enter the rough argument you want cut into a single card. The backend will research and fill missing source fields automatically when it can.</small>
-        </label>
-
-        <div class="grid grid-two">
-          <label class="field">
-            <span>Resolution</span>
-            <input id="resolution" name="resolution" type="text" placeholder="Resolved: ..." autocomplete="off">
-          </label>
-
-          <label class="field">
-            <span>Side</span>
-            <select id="side" name="side">
-              <option value="affirmative">Affirmative</option>
-              <option value="negative">Negative</option>
-              <option value="both">Both</option>
-            </select>
-          </label>
-        </div>
-
-        <label class="field">
-          <span>Article or evidence</span>
-          <textarea id="source-text" name="sourceText" rows="14" placeholder="Paste the full article, excerpt, or evidence block here. Leave blank if you want the backend to research from the draft tag."></textarea>
-        </label>
-
-        <div class="grid grid-three">
-          <label class="field">
-            <span>Source title</span>
-            <input id="source-title" name="sourceTitle" type="text" placeholder="Article headline">
-          </label>
-
-          <label class="field">
-            <span>Author / outlet</span>
-            <input id="source-author" name="sourceAuthor" type="text" placeholder="Optional author or outlet">
-          </label>
-
-          <label class="field">
-            <span>Published</span>
-            <input id="source-date" name="sourceDate" type="text" placeholder="Optional date">
-          </label>
-        </div>
-
-        <label class="field">
-          <span>Source URL</span>
-          <input id="source-url" name="sourceUrl" type="url" placeholder="https://...">
-        </label>
-
-        <label class="field">
-          <span>Blocked domains</span>
-          <textarea id="blocked-domains" name="blockedDomains" rows="3" placeholder="example.com&#10;badsource.net&#10;subdomain.site.org"></textarea>
-          <small>One domain per line or comma-separated. Matching domains will be excluded from research and source selection.</small>
-        </label>
-
-        <div class="grid grid-two">
-          <div class="field field-static">
-            <span>Card mode</span>
-            <strong>One card per run</strong>
-            <small>The backend cuts one card, then validates and revises it before copy.</small>
-          </div>
-          <label class="field">
-            <span>Emphasis</span>
-            <input id="emphasis" name="emphasis" type="text" placeholder="Economy, security, solvency, etc.">
-          </label>
-        </div>
-
-        <div class="research-strip">
-          <div>
-            <strong>Autonomous research</strong>
-            <p>If source fields are incomplete, the backend will try to research and enrich them before it cuts the card. The button below is just the manual preview step.</p>
-          </div>
-          <button id="research-btn" class="secondary" type="button">Research from tag</button>
-        </div>
-
-        <div class="grid grid-two research-grid">
-          <div class="field field-static">
-            <span>Search mode</span>
-            <strong>Semantic search default</strong>
-            <small>Semantic mode expands the draft tag by meaning before search. Literal mode keeps the exact wording.</small>
-            <div class="search-mode-toggle" role="group" aria-label="Search mode">
-              <button id="search-mode-semantic" class="mode-button is-active" type="button" aria-pressed="true">Semantic search</button>
-              <button id="search-mode-literal" class="mode-button" type="button" aria-pressed="false">Literal search</button>
+    <section class="workspace">
+      <div class="workspace-grid">
+        <section class="panel compose-panel">
+          <div class="section-head workspace-head">
+            <div>
+              <h2>Main tag</h2>
+              <p>Start with the claim you want. Open the rest only when you need it.</p>
+            </div>
+            <div class="mode-switch compact-mode-switch" role="tablist" aria-label="Card workflow">
+              <button id="mode-local" class="mode-button is-active" type="button" role="tab" aria-selected="true">
+                Quick cut
+              </button>
+              <button id="mode-chatgpt" class="mode-button" type="button" role="tab" aria-selected="false">
+                ChatGPT handoff
+              </button>
             </div>
           </div>
 
-          <div class="field field-static">
-            <span>Query preview</span>
-            <strong>Read-only search pack</strong>
-            <small>The backend will show the intent claim, refined query pack, and executed queries here after research.</small>
-            <div id="query-preview" class="query-preview" aria-live="polite"></div>
-          </div>
-        </div>
+          <form id="cut-form" class="form form-primary">
+            <label class="field field-hero field-tag">
+              <span>Draft tag</span>
+              <textarea id="draft-tag" name="draftTag" rows="4" placeholder="Green steel hurts manufacturing costs"></textarea>
+              <small>Keep it rough. You can start with just the claim.</small>
+            </label>
 
-        <div class="source-summary" id="source-summary" aria-live="polite">
-          <div class="source-summary-item">
-            <span>Selected source</span>
-            <strong>Waiting for research</strong>
-          </div>
-          <div class="source-summary-item">
-            <span>Evidence mode</span>
-            <strong>Cut auto-researches when source fields are incomplete</strong>
-          </div>
-          <div class="source-summary-item">
-            <span>Card style</span>
-            <strong>Tag line + cite line + evidence paragraph + validation pass</strong>
-          </div>
-        </div>
-        <div id="source-candidates" class="source-candidates" aria-live="polite"></div>
+            <div class="grid grid-two quick-grid">
+              <label class="field">
+                <span>Side</span>
+                <select id="side" name="side">
+                  <option value="affirmative">Affirmative</option>
+                  <option value="negative">Negative</option>
+                  <option value="both">Both</option>
+                </select>
+              </label>
 
-        <div class="actions">
-          <button id="submit-btn" class="primary" type="submit">
-            <span class="button-label">Cut card</span>
-            <span class="button-spinner" aria-hidden="true"></span>
-          </button>
-          <button id="copy-all-btn" class="secondary" type="button" disabled>Copy card</button>
-        </div>
-      </form>
+              <label class="field">
+                <span>Emphasis</span>
+                <input id="emphasis" name="emphasis" type="text" placeholder="Economy, security, solvency, etc.">
+              </label>
+            </div>
+
+            <div class="control-band">
+              <div class="search-mode-toggle" role="group" aria-label="Search mode">
+                <button id="search-mode-semantic" class="mode-button is-active" type="button" aria-pressed="true">Meaning match</button>
+                <button id="search-mode-literal" class="mode-button" type="button" aria-pressed="false">Exact wording</button>
+              </div>
+
+              <div class="actions primary-actions">
+                <button id="research-btn" class="secondary" type="button">Find source</button>
+                <button id="submit-btn" class="primary" type="submit">
+                  <span class="button-label">Cut card</span>
+                  <span class="button-spinner" aria-hidden="true"></span>
+                </button>
+                <button id="copy-all-btn" class="secondary" type="button" disabled>Copy card</button>
+              </div>
+            </div>
+
+            <div class="source-summary source-summary-compact" id="source-summary" aria-live="polite">
+              <div class="source-summary-item">
+                <span>Selected source</span>
+                <strong>Waiting for research</strong>
+              </div>
+              <div class="source-summary-item">
+                <span>Search mode</span>
+                <strong>Meaning match is ready</strong>
+              </div>
+              <div class="source-summary-item">
+                <span>Card flow</span>
+                <strong>Find a source, build the card, then copy it</strong>
+              </div>
+            </div>
+
+            <details class="detail-panel">
+              <summary>Source text and search details</summary>
+              <div class="detail-panel-body">
+                <label class="field">
+                  <span>Article or evidence</span>
+                  <textarea id="source-text" name="sourceText" rows="14" placeholder="Paste an article, excerpt, or block of evidence here. Leave it blank if you want the app to look for a source from the claim."></textarea>
+                </label>
+
+                <div class="grid grid-three">
+                  <label class="field">
+                    <span>Source title</span>
+                    <input id="source-title" name="sourceTitle" type="text" placeholder="Article headline">
+                  </label>
+
+                  <label class="field">
+                    <span>Author / outlet</span>
+                    <input id="source-author" name="sourceAuthor" type="text" placeholder="Optional author or outlet">
+                  </label>
+
+                  <label class="field">
+                    <span>Published</span>
+                    <input id="source-date" name="sourceDate" type="text" placeholder="Optional date">
+                  </label>
+                </div>
+
+                <div class="grid grid-two detail-grid">
+                  <label class="field">
+                    <span>Resolution</span>
+                    <input id="resolution" name="resolution" type="text" placeholder="Resolved: ..." autocomplete="off">
+                  </label>
+
+                  <label class="field">
+                    <span>Source URL</span>
+                    <input id="source-url" name="sourceUrl" type="url" placeholder="https://...">
+                  </label>
+                </div>
+
+                <label class="field">
+                  <span>Blocked domains</span>
+                  <textarea id="blocked-domains" name="blockedDomains" rows="3" placeholder="example.com&#10;badsource.net&#10;subdomain.site.org"></textarea>
+                  <small>One domain per line or comma-separated. Matching domains will be excluded from research and source selection.</small>
+                </label>
+
+                <div class="field field-static">
+                  <span>Search plan</span>
+                  <strong>Read-only source search</strong>
+                  <small>Your search plan and the source checks will appear here after you look for evidence.</small>
+                  <div id="query-preview" class="query-preview" aria-live="polite"></div>
+                </div>
+
+                <div id="source-candidates" class="source-candidates" aria-live="polite"></div>
+              </div>
+            </details>
+
+            <details class="detail-panel utility-panel">
+              <summary>ChatGPT handoff and progress details</summary>
+              <div class="detail-panel-body detail-panel-stack">
+                <p class="notice" id="workflow-note">
+                  Use this when you want to hand the draft off to ChatGPT and paste the result back in here.
+                </p>
+
+                <section id="chatgpt-panel" class="workflow-panel is-hidden" aria-hidden="true">
+                  <div class="section-head">
+                    <div>
+                      <h2>ChatGPT handoff</h2>
+                      <p>Copy the instructions, paste them into ChatGPT, then paste the result back here.</p>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-two">
+                    <div class="workflow-box">
+                      <div class="workflow-box-head">
+                        <h3>Instructions</h3>
+                        <button id="copy-prompt-btn" class="secondary" type="button">Copy instructions</button>
+                      </div>
+                      <pre id="prompt-preview" class="prompt-preview" aria-label="Instructions to paste into ChatGPT"></pre>
+                    </div>
+
+                    <div class="workflow-box">
+                      <div class="workflow-box-head">
+                        <h3>Paste result</h3>
+                        <button id="render-import-btn" class="secondary" type="button">Use pasted result</button>
+                      </div>
+                      <textarea id="import-json" class="import-json" rows="12" placeholder="Paste the result from ChatGPT here."></textarea>
+                    </div>
+                  </div>
+                </section>
+
+                <div class="runtime-debug" aria-live="polite">
+                  <div class="runtime-debug-head">
+                    <span class="mini-label">Progress</span>
+                    <span class="mini-badge">Details</span>
+                  </div>
+                  <div id="runtime-badges" class="runtime-badges"></div>
+                  <div id="runtime-details" class="runtime-details"></div>
+                  <div id="runtime-error" class="runtime-error"></div>
+                </div>
+              </div>
+            </details>
+          </form>
+        </section>
+
+        <aside class="workspace-side">
+          <section class="panel rail-panel queue-panel">
+            <div class="mini-panel-head">
+              <div>
+                <span class="mini-label">Queue</span>
+                <h3>Batch cards</h3>
+              </div>
+              <span class="mini-badge">Batch mode</span>
+            </div>
+            <p class="mini-copy">Paste one claim per line when you want to build several cards in one run.</p>
+            <label class="field field-compact">
+              <span>Queued claims</span>
+              <textarea id="queue-tags" rows="8" placeholder="Paste one claim per line."></textarea>
+            </label>
+            <div class="queue-actions">
+              <button id="queue-add-btn" class="secondary" type="button">Add claim</button>
+              <button id="queue-run-btn" class="primary" type="button">Run batch</button>
+            </div>
+            <ol id="queue-progress" class="queue-progress" aria-live="polite"></ol>
+          </section>
+
+          <section class="panel rail-panel export-panel">
+            <div class="mini-panel-head">
+              <div>
+                <span class="mini-label">Export</span>
+                <h3>Card file</h3>
+              </div>
+              <span class="mini-badge">Word + text</span>
+            </div>
+            <p class="mini-copy">Download the cards you want to keep.</p>
+            <div class="export-actions">
+              <button id="download-docx-btn" class="primary" type="button">Download .docx</button>
+              <button id="download-text-btn" class="secondary" type="button">Download text</button>
+            </div>
+          </section>
+        </aside>
+      </div>
     </section>
 
-    <section id="chatgpt-panel" class="panel workflow-panel is-hidden" aria-hidden="true">
-      <div class="section-head">
-        <div>
-          <h2>Manual ChatGPT workflow</h2>
-          <p>Generate a structured prompt, paste it into ChatGPT, then import the JSON it returns after the validation pass.</p>
-        </div>
-      </div>
-
-      <div class="grid grid-two">
-        <div class="workflow-box">
-          <div class="workflow-box-head">
-            <h3>Prompt preview</h3>
-            <button id="copy-prompt-btn" class="secondary" type="button">Copy prompt</button>
-          </div>
-          <pre id="prompt-preview" class="prompt-preview" aria-label="Prompt to paste into ChatGPT"></pre>
-        </div>
-
-        <div class="workflow-box">
-          <div class="workflow-box-head">
-            <h3>Import JSON</h3>
-            <button id="render-import-btn" class="secondary" type="button">Render import</button>
-          </div>
-          <textarea id="import-json" class="import-json" rows="12" placeholder="Paste the strict JSON from ChatGPT here."></textarea>
-        </div>
-      </div>
-    </section>
-
-    <section class="status-row" aria-live="polite">
-      <div id="status" class="status">Ready.</div>
+    <section class="status-row status-row-compact" aria-live="polite">
+      <div id="status" class="status">Ready to build a card.</div>
       <div id="meta" class="meta"></div>
-      <div class="runtime-debug" aria-live="polite">
-        <div class="runtime-debug-head">
-          <span class="mini-label">Runtime</span>
-          <span class="mini-badge">Diagnostics</span>
-        </div>
-        <div id="runtime-badges" class="runtime-badges"></div>
-        <div id="runtime-details" class="runtime-details"></div>
-        <div id="runtime-error" class="runtime-error"></div>
-      </div>
     </section>
 
     <section class="output panel">
       <div class="section-head">
         <h2>Generated cards</h2>
-        <p id="output-hint">No card yet. Paste evidence, enter a draft tag, or let Cut auto-research missing source details.</p>
+        <p id="output-hint">No card yet. Add a claim or run the batch to start.</p>
       </div>
       <div class="output-layout">
         <div class="cards-stage">
@@ -242,7 +253,7 @@
         </div>
 
         <aside class="output-sidebar" aria-label="Card workflow tools">
-          <section class="mini-panel saved-panel">
+          <section class="panel rail-panel saved-panel">
             <div class="mini-panel-head">
               <div>
                 <span class="mini-label">Library</span>
@@ -257,41 +268,6 @@
                 <span>The next cut will appear here as a separate card entry.</span>
               </li>
             </ol>
-          </section>
-
-          <section class="mini-panel queue-panel">
-            <div class="mini-panel-head">
-              <div>
-                <span class="mini-label">Queue</span>
-                <h3>Multi-tag research</h3>
-              </div>
-              <span class="mini-badge">Planned cuts</span>
-            </div>
-            <p class="mini-copy">Stack multiple draft tags here so the backend can research, fill, and cut them in sequence.</p>
-            <label class="field field-compact">
-              <span>Queued draft tags</span>
-              <textarea id="queue-tags" rows="6" placeholder="Paste one tag per line."></textarea>
-            </label>
-            <div class="queue-actions">
-              <button id="queue-add-btn" class="secondary" type="button">Add to queue</button>
-              <button id="queue-run-btn" class="primary" type="button">Run queue</button>
-            </div>
-            <ol id="queue-progress" class="queue-progress" aria-live="polite"></ol>
-          </section>
-
-          <section class="mini-panel export-panel">
-            <div class="mini-panel-head">
-              <div>
-                <span class="mini-label">Export</span>
-                <h3>Download card file</h3>
-              </div>
-              <span class="mini-badge">.docx</span>
-            </div>
-            <p class="mini-copy">Export the current cards into a debate-ready Word file with verbatim-style spacing and citation blocks.</p>
-            <div class="export-actions">
-              <button id="download-docx-btn" class="primary" type="button">Download .docx</button>
-              <button id="download-text-btn" class="secondary" type="button">Download text</button>
-            </div>
           </section>
         </aside>
       </div>

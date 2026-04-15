@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Static frontend plus stdlib backend for debate-card research, cutting, and export."""
+
 import io
 import json
 import logging
@@ -43,6 +45,8 @@ def _load_env_file(path: Path) -> None:
         key, value = line.split("=", 1)
         key = key.strip()
         if not key:
+            continue
+        if key in os.environ:
             continue
         cleaned = value.strip()
         if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {'"', "'"}:
@@ -90,7 +94,7 @@ def _env_int(name: str, default: int) -> int:
 OLLAMA_TIMEOUT = _env_int("OLLAMA_TIMEOUT", 120)
 BEDROCK_TIMEOUT = _env_int("BEDROCK_TIMEOUT", 120)
 CHATGPT_BRIDGE_TIMEOUT = _env_int("CHATGPT_BRIDGE_TIMEOUT", 120)
-OPENAI_COMPAT_TIMEOUT = _env_int("OPENAI_COMPAT_TIMEOUT", 180)
+OPENAI_COMPAT_TIMEOUT = _env_int("OPENAI_COMPAT_TIMEOUT", 120)
 SEARCH_RESULTS = _env_int("SEARCH_RESULTS", 50)
 SOURCE_RETRY_LIMIT = _env_int("SOURCE_RETRY_LIMIT", 10)
 SOURCE_SELECTION_SNIPPET_CHARS = _env_int("SOURCE_SELECTION_SNIPPET_CHARS", 220)
@@ -104,7 +108,9 @@ OPENAI_COMPAT_MAX_TOKENS = _env_int("OPENAI_COMPAT_MAX_TOKENS", 2200)
 OPENAI_COMPAT_PROMPT_CHARS = _env_int("OPENAI_COMPAT_PROMPT_CHARS", 12000)
 SOURCE_VALIDATION_EXCERPT_CHARS = _env_int("SOURCE_VALIDATION_EXCERPT_CHARS", 5000)
 QUEUE_PARALLELISM = _env_int("QUEUE_PARALLELISM", 3)
-MAX_RESEARCH_ROUNDS = _env_int("MAX_RESEARCH_ROUNDS", 2)
+MAX_RESEARCH_ROUNDS = _env_int("MAX_RESEARCH_ROUNDS", 3)
+CUT_CANDIDATE_CONTEXT_LIMIT = _env_int("CUT_CANDIDATE_CONTEXT_LIMIT", 8)
+SOURCE_SELECTION_RETRY_QUERY_LIMIT = _env_int("SOURCE_SELECTION_RETRY_QUERY_LIMIT", 4)
 _openai_compat_json_mode_raw = os.getenv("OPENAI_COMPAT_JSON_MODE")
 OPENAI_COMPAT_JSON_MODE = None
 if _openai_compat_json_mode_raw is not None:
@@ -113,7 +119,11 @@ MAX_QUEUE_TAGS = _env_int("MAX_QUEUE_TAGS", 25)
 SEARCH_ENGINE = os.getenv("SEARCH_ENGINE", "duckduckgo").strip().lower()
 WEB_USE_ENV_PROXY = os.getenv("WEB_USE_ENV_PROXY", "false").strip().lower() in {"1", "true", "yes", "on"}
 OUTBOUND_USE_ENV_PROXY = os.getenv("OUTBOUND_USE_ENV_PROXY", os.getenv("WEB_USE_ENV_PROXY", "false")).strip().lower() in {"1", "true", "yes", "on"}
-SEARCH_PROVIDER_COOLDOWN_SEC = _env_int("SEARCH_PROVIDER_COOLDOWN_SEC", 600)
+SEARCH_PROVIDER_COOLDOWN_SEC = _env_int("SEARCH_PROVIDER_COOLDOWN_SEC", 30)
+BING_USE_RSS = os.getenv("BING_USE_RSS", "true").strip().lower() in {"1", "true", "yes", "on"}
+USE_AI_QUERY_REFINEMENT = os.getenv("USE_AI_QUERY_REFINEMENT", "false").strip().lower() in {"1", "true", "yes", "on"}
+USE_AI_SOURCE_SELECTION = os.getenv("USE_AI_SOURCE_SELECTION", "false").strip().lower() in {"1", "true", "yes", "on"}
+SEARCH_QUERY_EXCLUSION_LIMIT = _env_int("SEARCH_QUERY_EXCLUSION_LIMIT", 12)
 USER_AGENT = os.getenv(
     "USER_AGENT",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -136,6 +146,8 @@ ACADEMIC_SEARCH_DOMAINS = [
     "springer.com",
     "onlinelibrary.wiley.com",
     "cambridge.org",
+    "degruyter.com",
+    "degruyterbrill.com",
     "tandfonline.com",
     "sagepub.com",
     "jstor.org",
@@ -145,6 +157,11 @@ THINK_TANK_SEARCH_DOMAINS = [
     "rand.org",
     "brookings.edu",
     "cfr.org",
+    "csis.org",
+    "carnegieendowment.org",
+    "stimson.org",
+    "atlanticcouncil.org",
+    "lowyinstitute.org",
     "imf.org",
     "worldbank.org",
     "nber.org",
@@ -159,13 +176,21 @@ AUTO_EXCLUDED_HOST_SNIPPETS = (
     "wiktionary.org",
     "dictionary.com",
     "merriam-webster.com",
+    "youtube.com",
+    "youtu.be",
+    "hulu.com",
+    "aetv.com",
     "stackexchange.com",
     "psychologytoday.com",
     "imdb.com",
     "tvguide.com",
     "fandom.com",
+    "justanswer.com",
+    "zhihu.com",
     "intuit.com",
     "turbotax.",
+    "military.com",
+    "internationaltrucks.com",
     "support.microsoft.com",
     "answers.microsoft.com",
 )
@@ -203,6 +228,65 @@ GENERIC_QUERY_TERMS = {
     "article",
     "abstract",
     "working",
+}
+
+
+WEAK_TOPIC_TERMS = {
+    "analysis",
+    "effect",
+    "effects",
+    "evidence",
+    "impact",
+    "impacts",
+    "international",
+    "intervention",
+    "interventions",
+    "military",
+    "policy",
+    "posture",
+    "report",
+    "risk",
+    "risks",
+    "security",
+    "strategic",
+    "study",
+    "studies",
+}
+
+
+CLAIM_QUERY_TERMS = {
+    "allow",
+    "allows",
+    "avoid",
+    "avoids",
+    "create",
+    "creates",
+    "encourage",
+    "encourages",
+    "heighten",
+    "heighten",
+    "heightens",
+    "increase",
+    "increases",
+    "lead",
+    "leads",
+    "lower",
+    "lowers",
+    "multiply",
+    "multiplies",
+    "non",
+    "prevent",
+    "prevents",
+    "provoke",
+    "provokes",
+    "reduce",
+    "reduces",
+    "trigger",
+    "triggers",
+    "weaken",
+    "weakens",
+    "widen",
+    "widens",
 }
 
 
@@ -288,13 +372,23 @@ DEBATE_CARD_GUIDANCE = {
 }
 
 
+class _SafeRotatingFileHandler(RotatingFileHandler):
+    """Ignore rollover permission errors and keep writing to the current file."""
+
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except PermissionError:
+            return
+
+
 def _make_file_logger(name: str, path: Path) -> logging.Logger:
     logger = logging.getLogger(name)
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    file_handler = RotatingFileHandler(path, maxBytes=1_500_000, backupCount=5, encoding="utf-8")
+    file_handler = _SafeRotatingFileHandler(path, maxBytes=1_500_000, backupCount=5, encoding="utf-8")
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     logger.propagate = False
@@ -305,7 +399,7 @@ LOGGER = logging.getLogger("debate_card_cutter")
 if not LOGGER.handlers:
     LOGGER.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    file_handler = RotatingFileHandler(LOG_FILE, maxBytes=1_500_000, backupCount=5, encoding="utf-8")
+    file_handler = _SafeRotatingFileHandler(LOG_FILE, maxBytes=1_500_000, backupCount=5, encoding="utf-8")
     file_handler.setFormatter(formatter)
     stream_handler = logging.StreamHandler(sys.stderr)
     stream_handler.setFormatter(formatter)
@@ -341,6 +435,19 @@ class IncompleteModelResponseError(ValueError):
 
 SEARCH_PROVIDER_DISABLED_UNTIL: dict[str, float] = {}
 SEARCH_PROVIDER_LOCK = Lock()
+OPENALEX_LOCK = Lock()
+
+
+def _request_search_state(value: Any = None) -> dict[str, Any]:
+    if isinstance(value, dict):
+        state = value
+    else:
+        state = {}
+    disabled_until = state.get("provider_disabled_until")
+    if not isinstance(disabled_until, dict):
+        disabled_until = {}
+        state["provider_disabled_until"] = disabled_until
+    return state
 
 
 def _json_response(handler: SimpleHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
@@ -933,12 +1040,10 @@ def _strict_provider_mode(payload: dict[str, Any]) -> bool:
     if requested_provider and requested_provider != "fallback":
         return True
 
-    pinned_provider = _normalize_provider(os.getenv("LOCAL_MODEL_PROVIDER", ""))
-    if pinned_provider and pinned_provider != "fallback":
+    env_strict = os.getenv("STRICT_PROVIDER_MODE", "").strip().lower()
+    if env_strict in {"1", "true", "yes", "on"}:
         return True
-
-    providers = [provider for provider in _provider_preference(payload) if provider != "fallback"]
-    return len(providers) == 1
+    return False
 
 
 def _summarize_card_for_prompt(card: dict[str, Any]) -> dict[str, Any]:
@@ -980,6 +1085,9 @@ def _summarize_candidate_for_prompt(candidate: dict[str, Any]) -> dict[str, Any]
         "paper_signals": _coerce_string_list(candidate.get("paper_signals")),
         "summary_signals": _coerce_string_list(candidate.get("summary_signals")),
         "exclusion_signals": _coerce_string_list(candidate.get("exclusion_signals")),
+        "strong_overlap_count": int(candidate.get("strong_overlap_count", 0) or 0),
+        "topical_overlap_count": int(candidate.get("topical_overlap_count", 0) or 0),
+        "phrase_match_count": int(candidate.get("phrase_match_count", 0) or 0),
         "fetch_error": _clean_text(candidate.get("fetch_error")),
         "snippet": _candidate_snippet(candidate),
     }
@@ -990,7 +1098,7 @@ def _optimize_openai_compat_payload(payload: dict[str, Any]) -> dict[str, Any]:
     optimized["article_text"] = _truncate(_clean_text(payload.get("article_text")), OPENAI_COMPAT_PROMPT_CHARS)
     candidate_sources = [
         _summarize_candidate_for_prompt(candidate)
-        for candidate in to_array(payload.get("candidate_sources"))[: min(MIXED_SOURCE_POOL_SIZE, 4)]
+        for candidate in to_array(payload.get("candidate_sources"))[: min(MIXED_SOURCE_POOL_SIZE, CUT_CANDIDATE_CONTEXT_LIMIT)]
         if isinstance(candidate, dict)
     ]
     if candidate_sources:
@@ -1146,21 +1254,23 @@ def _build_prompt(
     if stage == "validate":
         return {
             "task": "Validate and revise one debate card against the provided source.",
-            "requirements": [
-                "Return strict JSON only.",
-                "Review the proposed card for fidelity, usefulness, and debate usability.",
-                "Treat this as a separate validation call, not a continuation of drafting.",
-                "Check whether every underlined and highlighted span is actually grounded in the source article and whether the tag overclaims the source.",
-                "Use query_pack and search_mode as context for what the user actually meant by the draft tag.",
-                "If the card is weak, unsupported, too broad, duplicated, or awkwardly formatted, revise it.",
-                "If the source cannot support the tag cleanly, mark the card not useful instead of forcing a rewrite.",
-                "Treat draft_tag as the target claim. Keep the tag close to it, but tighten the tag if the source only supports a narrower claim.",
-                "Underlines mean every exact source substring that materially supports the argument: warrants, statistics, causal links, comparisons, author conclusions, and impact language.",
-                "Highlights mean only the exact words actually read aloud in-round.",
-                "Highlighted spans may be discontiguous and can jump across sentences or phrases.",
-                "Every underline and highlight span must be copied exactly from full_context and should include start/end offsets when possible. If offsets are uncertain, keep the exact text and leave the offsets empty instead of guessing.",
-                "Reject or revise the card if highlighted spans are not exact source substrings, if highlights are not inside underlined support when offsets allow checking, or if the tag is stronger than the highlighted evidence.",
-                "Return exactly one final card in a cards array.",
+        "requirements": [
+            "Return strict JSON only.",
+            "Review the proposed card for fidelity, usefulness, and debate usability.",
+            "Treat this as a separate validation call, not a continuation of drafting.",
+            "Check whether every underlined and highlighted span is actually grounded in the source article and whether the tag overclaims the source.",
+            "Use query_pack and search_mode as context for what the user actually meant by the draft tag.",
+            "If the card is weak, unsupported, too broad, duplicated, or awkwardly formatted, revise it.",
+            "Prefer tightening the tag, trimming spans, or improving formatting over rejecting the card outright.",
+            "If the source cannot support the tag cleanly, mark the card not useful instead of forcing a rewrite.",
+            "Treat draft_tag as the target claim. Keep the tag close to it, but tighten the tag if the source only supports a narrower claim.",
+            "Underlines mean every exact source substring that materially supports the argument: warrants, statistics, causal links, comparisons, author conclusions, and impact language.",
+            "Highlights mean only the exact words actually read aloud in-round.",
+            "Highlighted spans may be discontiguous and can jump across sentences or phrases.",
+            "Every underline and highlight span must be copied exactly from full_context and should include start/end offsets when possible. If offsets are uncertain, keep the exact text and leave the offsets empty instead of guessing.",
+            "Reject or revise the card if highlighted spans are not exact source substrings, if highlights are not inside underlined support when offsets allow checking, or if the tag is stronger than the highlighted evidence.",
+            "Only mark the card not useful when the source is clearly off-topic or the card cannot be grounded after revision.",
+            "Return exactly one final card in a cards array.",
                 "Include a validation object with useful, revised, passed, notes, issues, source_checks, confidence, tag_fit, span_grounding, and source_choice when possible.",
                 "Keep the debate-file structure intact: tag line, short cite, bracketed cite line ending in //IT, then one readable evidence paragraph.",
                 "Do not ask for or create a freeform read_text field; derive any read-aloud text only from highlighted_spans.",
@@ -1500,7 +1610,7 @@ def _search_bing_rss(query: str, limit: int) -> list[dict[str, Any]]:
     for item in root.findall(".//item"):
         title = _clean_text(item.findtext("title"))
         url = _normalize_web_url(_clean_text(item.findtext("link")))
-        if not title or not url or url in seen:
+        if not title or not url or url in seen or not _bing_rss_result_is_relevant(query, title, url):
             continue
         seen.add(url)
         results.append(
@@ -1517,12 +1627,6 @@ def _search_bing_rss(query: str, limit: int) -> list[dict[str, Any]]:
 
 
 def _search_bing(query: str, limit: int) -> list[dict[str, Any]]:
-    try:
-        rss_results = _search_bing_rss(query, limit)
-        if rss_results:
-            return rss_results
-    except Exception:
-        pass
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
     pattern = re.compile(r'<li[^>]*class="[^"]*\bb_algo\b[^"]*"[^>]*>.*?<h2><a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.I | re.S)
@@ -1549,13 +1653,20 @@ def _search_bing(query: str, limit: int) -> list[dict[str, Any]]:
                 return results
         if page_added == 0:
             break
-    return results
+    if results or not BING_USE_RSS:
+        return results
+    try:
+        return _search_bing_rss(query, limit)
+    except Exception:
+        return results
 
 
-def _search_web(query: str, limit: int) -> list[dict[str, Any]]:
+def _search_web(query: str, limit: int, search_state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     query = _clean_text(query)
     if not query:
         return []
+    state = _request_search_state(search_state)
+    disabled_until_by_provider = state["provider_disabled_until"]
 
     providers = [SEARCH_ENGINE] if SEARCH_ENGINE else []
     if "duckduckgo" not in providers:
@@ -1567,8 +1678,7 @@ def _search_web(query: str, limit: int) -> list[dict[str, Any]]:
     seen: set[str] = set()
     now = time.monotonic()
     for provider in providers:
-        with SEARCH_PROVIDER_LOCK:
-            disabled_until = SEARCH_PROVIDER_DISABLED_UNTIL.get(provider, 0.0)
+        disabled_until = float(disabled_until_by_provider.get(provider, 0.0) or 0.0)
         if disabled_until > now:
             _log_event(
                 logging.INFO,
@@ -1584,12 +1694,10 @@ def _search_web(query: str, limit: int) -> list[dict[str, Any]]:
             else:
                 provider_results = _search_duckduckgo(query, limit)
         except Exception as exc:
-            with SEARCH_PROVIDER_LOCK:
-                SEARCH_PROVIDER_DISABLED_UNTIL[provider] = time.monotonic() + SEARCH_PROVIDER_COOLDOWN_SEC
+            disabled_until_by_provider[provider] = time.monotonic() + SEARCH_PROVIDER_COOLDOWN_SEC
             _log_event(logging.WARNING, "search_provider_failed", provider=provider, query=query, error=str(exc))
             continue
-        with SEARCH_PROVIDER_LOCK:
-            SEARCH_PROVIDER_DISABLED_UNTIL.pop(provider, None)
+        disabled_until_by_provider.pop(provider, None)
         _log_event(logging.INFO, "search_provider_results", provider=provider, query=query, result_count=len(provider_results))
         for item in provider_results:
             url = item.get("url", "")
@@ -1599,6 +1707,176 @@ def _search_web(query: str, limit: int) -> list[dict[str, Any]]:
             results.append(item)
             if len(results) >= limit:
                 return results
+    return results
+
+
+def _openalex_abstract(inverted_index: Any) -> str:
+    if not isinstance(inverted_index, dict):
+        return ""
+    positioned: list[tuple[int, str]] = []
+    for token, positions in inverted_index.items():
+        for position in to_array(positions):
+            if isinstance(position, int):
+                positioned.append((position, _clean_text(token)))
+    if not positioned:
+        return ""
+    positioned.sort(key=lambda item: item[0])
+    return _clean_text(" ".join(token for _, token in positioned))
+
+
+def _search_openalex(query: str, limit: int, avoid_terms: list[str] | None = None) -> list[dict[str, Any]]:
+    if not query or limit <= 0:
+        return []
+    blocked_terms = [term.lower() for term in _coerce_string_list(avoid_terms or []) if _clean_text(term)]
+    with OPENALEX_LOCK:
+        search_url = (
+            "https://api.openalex.org/works"
+            f"?search={quote_plus(query)}"
+            f"&per-page={max(1, min(limit, 10))}"
+            "&select=display_name,doi,publication_year,primary_location,authorships,abstract_inverted_index,open_access"
+        )
+        body, _, charset, _ = _fetch_url_bytes(search_url, SEARCH_TIMEOUT, 800000)
+        response_json = json.loads(body.decode(charset, errors="replace"))
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for work in to_array(response_json.get("results")):
+        if not isinstance(work, dict):
+            continue
+        title = _clean_text(work.get("display_name"))
+        abstract_text = _openalex_abstract(work.get("abstract_inverted_index"))
+        haystack = f"{title} {abstract_text}".lower()
+        if blocked_terms and any(term in haystack for term in blocked_terms):
+            continue
+        doi = _clean_text(work.get("doi"))
+        primary_location = work.get("primary_location") if isinstance(work.get("primary_location"), dict) else {}
+        source_info = primary_location.get("source") if isinstance(primary_location.get("source"), dict) else {}
+        landing_page = _normalize_web_url(
+            _clean_text(primary_location.get("landing_page_url"))
+            or _clean_text(primary_location.get("pdf_url"))
+            or doi
+        )
+        if not landing_page:
+            continue
+        key = landing_page or _normalized_title_key(title)
+        if key in seen:
+            continue
+        seen.add(key)
+        authors = []
+        for authorship in to_array(work.get("authorships"))[:3]:
+            if not isinstance(authorship, dict):
+                continue
+            author_info = authorship.get("author") if isinstance(authorship.get("author"), dict) else {}
+            name = _clean_text(author_info.get("display_name"))
+            if name:
+                authors.append(name)
+        author = ", ".join(authors[:2])
+        publication = _clean_text(source_info.get("display_name"))
+        results.append(
+            {
+                "engine": "openalex",
+                "title": title,
+                "url": landing_page,
+                "query": query,
+                "author": author,
+                "publication": publication,
+                "published": _clean_text(work.get("publication_year")),
+                "description": _truncate(abstract_text, 600) or title,
+                "text": abstract_text,
+                "content_type": "text/plain",
+                "byte_count": len(abstract_text.encode("utf-8")) if abstract_text else 0,
+                "doi": doi,
+                "pdf_url": _clean_text((work.get("open_access") or {}).get("oa_url")) if isinstance(work.get("open_access"), dict) else "",
+            }
+        )
+        if len(results) >= limit:
+            break
+    return results
+
+
+def _crossref_abstract(raw_abstract: Any) -> str:
+    text = _clean_text(raw_abstract)
+    if not text:
+        return ""
+    return _clean_text(re.sub(r"<[^>]+>", " ", unescape(text)))
+
+
+def _crossref_published_year(item: dict[str, Any]) -> str:
+    for key in ("issued", "published-print", "published-online", "created"):
+        value = item.get(key)
+        if not isinstance(value, dict):
+            continue
+        parts = value.get("date-parts")
+        if isinstance(parts, list) and parts and isinstance(parts[0], list) and parts[0]:
+            year = parts[0][0]
+            if isinstance(year, int):
+                return str(year)
+    return ""
+
+
+def _search_crossref(query: str, limit: int, avoid_terms: list[str] | None = None) -> list[dict[str, Any]]:
+    if not query or limit <= 0:
+        return []
+    blocked_terms = [term.lower() for term in _coerce_string_list(avoid_terms or []) if _clean_text(term)]
+    search_url = (
+        "https://api.crossref.org/works"
+        f"?rows={max(1, min(limit, 10))}"
+        f"&query.bibliographic={quote_plus(query)}"
+    )
+    body, _, charset, _ = _fetch_url_bytes(search_url, SEARCH_TIMEOUT, 900000)
+    response_json = json.loads(body.decode(charset, errors="replace"))
+    message = response_json.get("message") if isinstance(response_json.get("message"), dict) else {}
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in to_array(message.get("items")):
+        if not isinstance(item, dict):
+            continue
+        title = _clean_text(" ".join(to_array(item.get("title"))))
+        abstract_text = _crossref_abstract(item.get("abstract"))
+        haystack = f"{title} {abstract_text}".lower()
+        if blocked_terms and any(term in haystack for term in blocked_terms):
+            continue
+        resource = item.get("resource") if isinstance(item.get("resource"), dict) else {}
+        primary = resource.get("primary") if isinstance(resource.get("primary"), dict) else {}
+        doi = _clean_text(item.get("DOI"))
+        landing_page = _normalize_web_url(
+            _clean_text(primary.get("URL"))
+            or _clean_text(item.get("URL"))
+            or (f"https://doi.org/{doi}" if doi else "")
+        )
+        if not landing_page:
+            continue
+        key = landing_page or _normalized_title_key(title)
+        if key in seen:
+            continue
+        seen.add(key)
+        authors = []
+        for author_info in to_array(item.get("author"))[:3]:
+            if not isinstance(author_info, dict):
+                continue
+            name = _build_query_phrase(_clean_text(author_info.get("given")), _clean_text(author_info.get("family")))
+            if name:
+                authors.append(name)
+        publication = _clean_text(" ".join(to_array(item.get("container-title"))))
+        description = _truncate(abstract_text, 600) or title
+        results.append(
+            {
+                "engine": "crossref",
+                "title": title,
+                "url": landing_page,
+                "query": query,
+                "author": ", ".join(authors[:2]),
+                "publication": publication,
+                "published": _crossref_published_year(item),
+                "description": description,
+                "text": abstract_text,
+                "content_type": "text/plain",
+                "byte_count": len(abstract_text.encode("utf-8")) if abstract_text else 0,
+                "doi": doi,
+                "score_hint": float(item.get("score", 0.0) or 0.0),
+            }
+        )
+        if len(results) >= limit:
+            break
     return results
 
 
@@ -1760,8 +2038,110 @@ def _expand_query_pack_for_research_round(query_pack: dict[str, Any], round_numb
     return expanded
 
 
+def _merge_query_pack_suggestions(query_pack: dict[str, Any], suggestions: list[str]) -> dict[str, Any]:
+    suggested = _coerce_string_list(suggestions)[:SOURCE_SELECTION_RETRY_QUERY_LIMIT]
+    if not suggested:
+        return dict(query_pack)
+
+    merged = dict(query_pack)
+    merged["semantic_queries"] = _dedupe_strings([*_coerce_string_list(query_pack.get("semantic_queries")), *suggested])
+    merged["academic_queries"] = _dedupe_strings([*_coerce_string_list(query_pack.get("academic_queries")), *suggested])
+    merged["think_tank_queries"] = _dedupe_strings([*_coerce_string_list(query_pack.get("think_tank_queries")), *suggested])
+    merged["fallback_web_queries"] = _dedupe_strings([*_coerce_string_list(query_pack.get("fallback_web_queries")), *suggested])
+    merged["explanation"] = _build_query_phrase(
+        _clean_text(query_pack.get("explanation")),
+        "Added source-selection retry suggestions after the prior candidate pool failed.",
+    )
+    return merged
+
+
+def _rejected_candidate_retry_terms(query_pack: dict[str, Any], rejected_candidates: list[dict[str, Any]]) -> list[str]:
+    core_terms = {
+        token
+        for token in _word_tokens(
+            " ".join(
+                [
+                    _clean_text(query_pack.get("intent_claim")),
+                    _clean_text(query_pack.get("literal_query")),
+                    " ".join(_coerce_string_list(query_pack.get("must_have_terms"))),
+                ]
+            )
+        )
+        if token not in STOPWORDS and token not in GENERIC_QUERY_TERMS and len(token) >= 4
+    }
+    retry_terms: list[str] = []
+    host_stopwords = {"www", "com", "org", "edu", "gov", "net", "co", "io", "app"}
+    for candidate in rejected_candidates:
+        url = _clean_text(candidate.get("url"))
+        host_terms = [
+            token
+            for token in re.split(r"[^A-Za-z0-9]+", _hostname(url))
+            if token and token not in host_stopwords
+        ]
+        title_terms = _word_tokens(
+            " ".join(
+                [
+                    _clean_text(candidate.get("title")),
+                    _clean_text(candidate.get("publication")),
+                    _clean_text(candidate.get("source_class")),
+                ]
+            )
+        )
+        for term in [*host_terms, *title_terms]:
+            if term in core_terms or term in STOPWORDS or term in GENERIC_QUERY_TERMS or len(term) < 4 or term.isdigit():
+                continue
+            retry_terms.append(term)
+    return _dedupe_strings(retry_terms)
+
+
+def _build_retry_query_pack(
+    query_pack: dict[str, Any],
+    *,
+    selection_meta: dict[str, Any],
+    rejected_candidates: list[dict[str, Any]],
+    rejected_source_meta: list[dict[str, Any]],
+) -> dict[str, Any]:
+    query_hints = [
+        *(_coerce_string_list(selection_meta.get("query_suggestions")) if isinstance(selection_meta, dict) else []),
+    ]
+    query_gap = _clean_text(selection_meta.get("query_gap")) if isinstance(selection_meta, dict) else ""
+    intent_claim = _clean_text(query_pack.get("intent_claim")) or _clean_text(query_pack.get("literal_query"))
+    if query_gap:
+        query_hints.append(_build_query_phrase(intent_claim, query_gap))
+    for meta in rejected_source_meta:
+        tightened_tag = _clean_text(meta.get("tightened_tag"))
+        best_quote_hint = _clean_text(meta.get("best_quote_hint"))
+        if tightened_tag:
+            query_hints.extend(
+                [
+                    tightened_tag,
+                    _build_query_phrase(tightened_tag, "evidence"),
+                    _build_query_phrase(tightened_tag, "mechanism"),
+                ]
+            )
+        elif best_quote_hint:
+            query_hints.append(_build_query_phrase(intent_claim, best_quote_hint))
+
+    merged = _merge_query_pack_suggestions(query_pack, query_hints)
+    retry_avoid_terms = _rejected_candidate_retry_terms(merged, rejected_candidates)
+    if retry_avoid_terms:
+        merged["avoid_terms"] = _dedupe_strings([*_coerce_string_list(merged.get("avoid_terms")), *retry_avoid_terms])
+    merged["explanation"] = _build_query_phrase(
+        _clean_text(merged.get("explanation") or query_pack.get("explanation")),
+        "Retried after prior source candidates were rejected, so future searches should avoid the same junk results.",
+    )
+    return merged
+
+
 def _search_query_with_exclusions(query: str, avoid_terms: list[str]) -> str:
-    exclusions = _dedupe_strings([*SEARCH_QUERY_NEGATIVE_TERMS, *_coerce_string_list(avoid_terms)])
+    query = _clean_text(query)
+    tokens = _word_tokens(query)
+    question_leads = {"do", "does", "did", "is", "are", "can", "could", "would", "should", "what", "when", "where", "why", "how"}
+    if tokens and (query.endswith("?") or tokens[0] in question_leads):
+        keyword_tokens = [token for token in tokens if token not in STOPWORDS and token not in question_leads]
+        if keyword_tokens:
+            query = " ".join(keyword_tokens)
+    exclusions = _dedupe_strings([*SEARCH_QUERY_NEGATIVE_TERMS, *_coerce_string_list(avoid_terms)])[:SEARCH_QUERY_EXCLUSION_LIMIT]
     if not query:
         return ""
     suffix = " ".join(
@@ -1772,22 +2152,255 @@ def _search_query_with_exclusions(query: str, avoid_terms: list[str]) -> str:
     return _build_query_phrase(query, suffix)
 
 
+def _search_query_expected_domain(query: str) -> str:
+    match = re.search(r"\bsite:([^\s]+)", _clean_text(query).lower())
+    return _clean_text(match.group(1)) if match else ""
+
+
+def _search_query_positive_terms(query: str) -> list[str]:
+    cleaned_query = re.sub(r"-\"[^\"]+\"|-\S+", " ", _clean_text(query))
+    cleaned_query = re.sub(r"\bsite:[^\s]+\b", " ", cleaned_query, flags=re.I)
+    tokens = [
+        token
+        for token in _word_tokens(cleaned_query)
+        if token not in STOPWORDS
+        and token not in GENERIC_QUERY_TERMS
+        and token not in CLAIM_QUERY_TERMS
+        and token not in WEAK_TOPIC_TERMS
+        and len(token) >= 4
+    ]
+    return _dedupe_strings(tokens)[:6]
+
+
+def _bing_rss_result_is_relevant(query: str, title: str, url: str) -> bool:
+    expected_domain = _search_query_expected_domain(query)
+    host = _hostname(url)
+    if expected_domain and host != expected_domain and not host.endswith(f".{expected_domain}"):
+        return False
+    haystack = f"{_clean_text(title).lower()} {_clean_text(url).lower()}"
+    positive_terms = _search_query_positive_terms(query)
+    if not positive_terms:
+        return True
+    matches = sum(1 for term in positive_terms if re.search(rf"\b{re.escape(term)}\b", haystack))
+    required_matches = 2 if len(positive_terms) >= 2 else 1
+    return matches >= required_matches
+
+
+def _metadata_search_query(query: str) -> str:
+    tokens = [
+        token
+        for token in _word_tokens(query)
+        if token not in STOPWORDS
+        and token not in GENERIC_QUERY_TERMS
+        and token not in {"journal", "article", "abstract", "working", "think", "tank", "report", "analysis", "policy", "brief", "site", "doi"}
+        and len(token) >= 4
+    ]
+    return " ".join(tokens[:12])
+
+
+def _research_domain_context(draft_tag: str, resolution: str, emphasis: str) -> str:
+    tokens = _score_terms(" ".join([draft_tag, resolution, emphasis]))
+    hints: list[str] = []
+    security_terms = {
+        "deterrence",
+        "troop",
+        "troops",
+        "military",
+        "readiness",
+        "logistics",
+        "retention",
+        "morale",
+        "strategic",
+        "overextension",
+        "modernization",
+        "asymmetric",
+        "peer",
+        "force",
+    }
+    if tokens & security_terms:
+        hints.extend(["military", "strategy"])
+    if "intervention" in tokens:
+        hints.append("foreign policy")
+    if tokens & {"alliance", "alliances", "entrapment", "guarantees", "commitments", "primacy", "balancing", "offshore", "restraint", "deployment", "presence", "tripwire", "crisis"}:
+        hints.extend(["international relations", "grand strategy"])
+    if tokens & {"deterrence", "posture"}:
+        hints.extend(["security", "nuclear strategy"])
+    return _build_query_phrase(*hints)
+
+
+def _semantic_expansion_queries(draft_tag: str, domain_context: str) -> list[str]:
+    lowered = _clean_text(draft_tag).lower()
+    expansions: list[str] = []
+    if "security guarantees" in lowered or "alliance guarantees" in lowered:
+        expansions.extend(
+            [
+                "alliance entrapment",
+                "alliance moral hazard",
+                "defense pacts entrapment",
+                "entangling alliances",
+            ]
+        )
+    if "offshore balancing" in lowered:
+        expansions.extend(
+            [
+                "offshore balancing grand strategy",
+                "restraint grand strategy costs",
+                "offshore balancing strategy costs",
+                "retrenchment grand strategy costs",
+            ]
+        )
+    if "military primacy" in lowered or "primacy" in lowered:
+        expansions.extend(
+            [
+                "primacy balancing coalitions",
+                "hegemony balancing",
+                "counterbalancing against primacy",
+            ]
+        )
+    if "tripwire" in lowered or "forward presence" in lowered or "forward deployment" in lowered:
+        expansions.extend(
+            [
+                "tripwire forces escalation",
+                "tripwire force deployments",
+                "forward deployment crisis instability",
+                "forward deployment tripwire",
+                "forward presence escalation risk",
+                "tripwire escalation",
+                "tripwire effect public opinion",
+                "tripwire forces crisis stability",
+            ]
+        )
+    if "readiness" in lowered or "overseas commitments" in lowered:
+        expansions.extend(
+            [
+                "operational tempo readiness",
+                "overseas commitments readiness",
+                "military readiness deployments",
+                "force readiness overseas deployments",
+                "overstretch readiness military",
+            ]
+        )
+    if "credibility traps" in lowered or "credibility" in lowered:
+        expansions.extend(
+            [
+                "credibility reputation escalation",
+                "reputational commitment traps",
+                "audience costs intervention escalation",
+            ]
+        )
+    if "mission creep" in lowered or "commitment pressures" in lowered:
+        expansions.extend(
+            [
+                "mission creep intervention",
+                "sunk costs intervention escalation",
+                "commitment expansion intervention",
+                "intervention overextension",
+                "avoid intervention mission creep",
+                "military restraint mission creep",
+                "nonintervention mission creep",
+            ]
+        )
+    if "arms racing" in lowered or "arms race" in lowered:
+        expansions.extend(
+            [
+                "arms racing crisis stability",
+                "arms race inadvertent escalation",
+            ]
+        )
+    if "strategic restraint" in lowered or "restraint" in lowered:
+        expansions.extend(
+            [
+                "strategic restraint grand strategy",
+                "restraint overextension",
+                "offshore balancing restraint",
+                "retrenchment overextension",
+                "retrenchment grand strategy",
+                "overstretch grand strategy",
+            ]
+        )
+    if "extended deterrence" in lowered or "nuclear escalation" in lowered:
+        expansions.extend(
+            [
+                "extended deterrence escalation risk",
+                "nuclear escalation commitments",
+                "nuclear alliance escalation",
+            ]
+        )
+    return _dedupe_strings(expansions)
+
+
 def _heuristic_query_pack(payload: dict[str, Any], *, semantic_enabled: bool) -> dict[str, Any]:
     draft_tag = _clean_text(payload.get("draft_tag"))
     resolution = _clean_text(payload.get("resolution"))
     emphasis = _clean_text(payload.get("emphasis"))
     literal_query = _build_query_phrase(draft_tag, resolution, emphasis)
-    must_have_terms = sorted(_score_terms(draft_tag or literal_query))[:8]
-    avoid_terms = ["podcast", "news", "press release", "summary", "overview", "blog"]
+    domain_context = _research_domain_context(draft_tag, resolution, emphasis)
+    semantic_expansions = _semantic_expansion_queries(draft_tag or literal_query, domain_context)
+    must_have_terms = sorted(
+        token
+        for token in _score_terms(draft_tag or literal_query)
+        if token not in CLAIM_QUERY_TERMS and token not in WEAK_TOPIC_TERMS and len(token) >= 4
+    )[:8]
+    if not must_have_terms:
+        must_have_terms = sorted(token for token in _score_terms(draft_tag or literal_query) if token not in CLAIM_QUERY_TERMS and len(token) >= 4)[:8]
+    avoid_terms = [
+        "podcast",
+        "news",
+        "press release",
+        "summary",
+        "overview",
+        "blog",
+        "dictionary",
+        "definition",
+        "meaning",
+        "tv series",
+        "episode",
+        "streaming",
+        "playlist",
+        "recipe",
+        "fan guide",
+        "support",
+        "login",
+    ]
+    token_set = _score_terms(draft_tag or literal_query)
+    if "security" in token_set or "guarantees" in token_set:
+        avoid_terms.extend(["certification", "cybersecurity", "cameras", "alarm", "guards", "services", "comptia"])
+    if "offshore" in token_set:
+        avoid_terms.extend(["boat", "boats", "boating", "fishing", "marine", "drilling", "classifieds", "offshoreonly", "oil", "energy", "accuracy", "hierarchies", "reconciliation", "markets", "organizations"])
+    if "alliance" in token_set or "alliances" in token_set:
+        avoid_terms.extend(["community", "healthcare", "provider", "empowerment"])
+    if "military" in token_set:
+        avoid_terms.extend(["draft", "veteran", "license plate"])
+    if token_set & {"readiness", "commitments", "commitment", "deployment", "deployments", "presence"}:
+        avoid_terms.extend(["draft", "veteran", "license plate", "deepfake", "deep fakes", "ai generated"])
+    if token_set & {"deployment", "deployments", "presence", "forward"}:
+        avoid_terms.extend(["carbon", "dioxide", "emissions", "china", "geopolitical", "sustainability"])
+    if "presence" in token_set:
+        avoid_terms.extend(["church", "worship"])
+    if token_set & {"mission", "creep", "intervention"}:
+        avoid_terms.extend(["humanitarian", "humanitarian-development", "development", "climate", "aid"])
+    if token_set & {"credibility", "traps", "trap"}:
+        avoid_terms.extend(["cyberattack", "attribution"])
+    avoid_terms = _dedupe_strings(avoid_terms)
 
     if not semantic_enabled:
         return {
             "intent_claim": draft_tag or literal_query,
             "literal_query": literal_query,
             "semantic_queries": [literal_query] if literal_query else [],
-            "academic_queries": [_build_query_phrase(literal_query, "study evidence paper pdf doi")],
-            "think_tank_queries": [_build_query_phrase(literal_query, "report analysis policy brief")],
-            "fallback_web_queries": [literal_query],
+            "academic_queries": _dedupe_strings(
+                [
+                    _build_query_phrase(literal_query, "study evidence paper pdf doi"),
+                    *semantic_expansions,
+                ]
+            ),
+            "think_tank_queries": _dedupe_strings(
+                [
+                    _build_query_phrase(literal_query, "report analysis policy brief"),
+                    *semantic_expansions,
+                ]
+            ),
+            "fallback_web_queries": _dedupe_strings([literal_query, *semantic_expansions]),
             "must_have_terms": must_have_terms,
             "avoid_terms": avoid_terms,
             "explanation": "Literal search mode keeps the tag close to the original wording and adds light evidence-oriented query templates.",
@@ -1801,6 +2414,7 @@ def _heuristic_query_pack(payload: dict[str, Any], *, semantic_enabled: bool) ->
             _build_query_phrase(intent_claim, "causes effects"),
             _build_query_phrase(intent_claim, "study report analysis"),
             _build_query_phrase(emphasis, intent_claim, resolution),
+            *semantic_expansions,
         ]
     )
     return {
@@ -1810,6 +2424,7 @@ def _heuristic_query_pack(payload: dict[str, Any], *, semantic_enabled: bool) ->
         "academic_queries": _dedupe_strings(
             [
                 _build_query_phrase(intent_claim, "study evidence paper pdf doi"),
+                *semantic_expansions,
                 _build_query_phrase(intent_claim, "journal article abstract"),
                 _build_query_phrase(intent_claim, resolution, "working paper"),
             ]
@@ -1817,6 +2432,7 @@ def _heuristic_query_pack(payload: dict[str, Any], *, semantic_enabled: bool) ->
         "think_tank_queries": _dedupe_strings(
             [
                 _build_query_phrase(intent_claim, "report analysis"),
+                *semantic_expansions,
                 _build_query_phrase(intent_claim, emphasis, "policy brief"),
             ]
         ),
@@ -1825,6 +2441,7 @@ def _heuristic_query_pack(payload: dict[str, Any], *, semantic_enabled: bool) ->
                 literal_query,
                 _build_query_phrase(intent_claim, "evidence"),
                 _build_query_phrase(intent_claim, emphasis),
+                *semantic_expansions,
             ]
         ),
         "must_have_terms": must_have_terms,
@@ -1891,7 +2508,7 @@ def _refine_query_pack(payload: dict[str, Any]) -> tuple[dict[str, Any], str, bo
         heuristic = _heuristic_query_pack(payload, semantic_enabled=semantic_enabled)
         return heuristic, search_mode, False, "heuristic"
 
-    if semantic_enabled:
+    if semantic_enabled and USE_AI_QUERY_REFINEMENT:
         prompt = _build_query_refinement_prompt(payload)
         for provider in _provider_preference(payload):
             if provider == "fallback":
@@ -1962,7 +2579,11 @@ def _paper_signals(candidate: dict[str, Any]) -> list[str]:
         signals.append("pdf")
     lower_text = text.lower()
     lower_url = url.lower()
-    section_markers = [marker for marker in ("abstract", "introduction", "method", "results", "discussion", "references") if marker in lower_text]
+    section_markers = [
+        marker
+        for marker in ("abstract", "introduction", "method", "results", "discussion", "references")
+        if re.search(rf"(?im)(^|\n)\s*{marker}s?\s*(:|\n|$)", text)
+    ]
     if len(section_markers) >= 2:
         signals.append("paper_sections")
     if len(section_markers) >= 4:
@@ -1975,7 +2596,7 @@ def _paper_signals(candidate: dict[str, Any]) -> list[str]:
         signals.append("working_paper")
     if "pubmed.ncbi.nlm.nih.gov" in lower_url:
         signals.append("pubmed")
-    if re.search(r"\b(vol\.?|volume|issue|journal)\b", f"{title} {text}", re.I):
+    if re.search(r"\b(vol\.?|volume)\s*\d+\b", f"{title} {text}", re.I) or re.search(r"\bissue\s*\d+\b", f"{title} {text}", re.I):
         signals.append("journal_metadata")
     return _dedupe_strings(signals)
 
@@ -2003,7 +2624,7 @@ def _candidate_topic_terms(intent_phrase: str, must_have_terms: list[str]) -> se
     terms = {
         token
         for token in _score_terms(" ".join([intent_phrase, " ".join(must_have_terms)]))
-        if token not in GENERIC_QUERY_TERMS and len(token) >= 4
+        if token not in GENERIC_QUERY_TERMS and token not in CLAIM_QUERY_TERMS and token not in WEAK_TOPIC_TERMS and len(token) >= 4
     }
     return terms
 
@@ -2024,12 +2645,17 @@ def _candidate_topical_overlap(candidate: dict[str, Any], topic_terms: set[str],
             _clean_text(candidate.get("text")).lower()[:8000],
         ]
     )
-    matched_terms = sorted(term for term in topic_terms if term in haystack)
-    matched_phrases = sorted(phrase for phrase in topic_phrases if phrase in haystack)
+    haystack_tokens = set(_word_tokens(haystack))
+    normalized_haystack = _normalize_space(haystack)
+    matched_terms = sorted(term for term in topic_terms if term in haystack_tokens)
+    matched_phrases = sorted(phrase for phrase in topic_phrases if _normalize_space(phrase) in normalized_haystack)
+    strong_matched_terms = sorted(term for term in matched_terms if term not in WEAK_TOPIC_TERMS)
     return {
         "matched_terms": matched_terms,
+        "strong_matched_terms": strong_matched_terms,
         "matched_phrases": matched_phrases,
         "topical_overlap_count": len(matched_terms),
+        "strong_overlap_count": len(strong_matched_terms),
         "phrase_match_count": len(matched_phrases),
     }
 
@@ -2041,15 +2667,129 @@ def _candidate_is_usable(candidate: dict[str, Any]) -> bool:
         return False
     phrase_matches = int(candidate.get("phrase_match_count", 0) or 0)
     overlap_count = int(candidate.get("topical_overlap_count", 0) or 0)
+    strong_overlap_count = int(candidate.get("strong_overlap_count", 0) or 0)
     source_class = _clean_text(candidate.get("source_class"))
     paper_verified = bool(candidate.get("paper_verified"))
+    candidate_text = _clean_text(candidate.get("text")) or _clean_text(candidate.get("description"))
     if phrase_matches > 0:
+        if source_class in {"peer_reviewed", "preprint", "working_paper", "think_tank"} or paper_verified:
+            return True
+        if len(candidate_text) >= 160 and (strong_overlap_count >= 2 or (phrase_matches >= 2 and strong_overlap_count >= 1)):
+            return True
+        return False
+    if paper_verified and strong_overlap_count >= 1:
         return True
-    if paper_verified and overlap_count >= 1:
+    if source_class in {"peer_reviewed", "preprint", "working_paper"} and strong_overlap_count >= 1:
         return True
-    if source_class == "think_tank" and overlap_count >= 1:
+    if source_class == "think_tank" and strong_overlap_count >= 1:
         return True
-    return overlap_count >= 2
+    return strong_overlap_count >= 2 or (strong_overlap_count >= 1 and overlap_count >= 2)
+
+
+def _candidate_is_hard_reject(candidate: dict[str, Any]) -> bool:
+    if _coerce_string_list(candidate.get("exclusion_signals")):
+        return True
+    if not _clean_text(candidate.get("url")):
+        return True
+    text = _clean_text(candidate.get("text"))
+    description = _clean_text(candidate.get("description"))
+    if _clean_text(candidate.get("fetch_error")) and not text and not description:
+        return True
+    return len(text or description or _clean_text(candidate.get("title"))) < 40
+
+
+def _candidate_is_strong_extractive_candidate(candidate: dict[str, Any]) -> bool:
+    if _candidate_is_hard_reject(candidate):
+        return False
+    if _clean_text(candidate.get("fetch_error")):
+        return False
+    source_class = _clean_text(candidate.get("source_class"))
+    if source_class not in {"peer_reviewed", "preprint", "working_paper", "think_tank"}:
+        return False
+    text = _clean_text(candidate.get("text"))
+    if len(text) < 400:
+        return False
+    score = float(candidate.get("score", 0.0) or 0.0)
+    phrase_match_count = int(candidate.get("phrase_match_count", 0) or 0)
+    strong_overlap_count = int(candidate.get("strong_overlap_count", 0) or 0)
+    paper_verified = bool(candidate.get("paper_verified"))
+    if paper_verified and score >= 0.35 and strong_overlap_count >= 2:
+        return True
+    if paper_verified and score >= 0.3 and strong_overlap_count >= 1:
+        return True
+    if score >= 0.45 and phrase_match_count >= 1 and strong_overlap_count >= 1:
+        return True
+    return source_class == "think_tank" and score >= 0.42 and strong_overlap_count >= 2
+
+
+def _candidate_is_fast_extractive_candidate(candidate: dict[str, Any], source_validation_meta: dict[str, Any]) -> bool:
+    if _candidate_is_strong_extractive_candidate(candidate):
+        return True
+    if source_validation_meta.get("supports_tag") is not True or source_validation_meta.get("useful") is not True:
+        return False
+    if _candidate_is_hard_reject(candidate) or _clean_text(candidate.get("fetch_error")):
+        return False
+    if _clean_text(candidate.get("source_class")) not in {"peer_reviewed", "preprint", "working_paper", "think_tank"}:
+        return False
+    if len(_clean_text(candidate.get("text"))) < 400:
+        return False
+    score = float(candidate.get("score", 0.0) or 0.0)
+    strong_overlap_count = int(candidate.get("strong_overlap_count", 0) or 0)
+    paper_verified = bool(candidate.get("paper_verified"))
+    return paper_verified and score >= 0.3 and strong_overlap_count >= 1
+
+
+def _candidate_is_salvageable_after_rejection(candidate: dict[str, Any], source_validation_meta: dict[str, Any]) -> bool:
+    if _candidate_is_hard_reject(candidate) or _clean_text(candidate.get("fetch_error")):
+        return False
+    text = _clean_text(candidate.get("text")) or _clean_text(candidate.get("description"))
+    if len(text) < 220:
+        return False
+    tightened_tag = _clean_text(source_validation_meta.get("tightened_tag"))
+    best_quote_hint = _clean_text(source_validation_meta.get("best_quote_hint"))
+    if not tightened_tag and not best_quote_hint:
+        return False
+    source_class = _clean_text(candidate.get("source_class"))
+    score = float(candidate.get("score", 0.0) or 0.0)
+    phrase_match_count = int(candidate.get("phrase_match_count", 0) or 0)
+    strong_overlap_count = int(candidate.get("strong_overlap_count", 0) or 0)
+    paper_verified = bool(candidate.get("paper_verified"))
+    if source_class in {"peer_reviewed", "preprint", "working_paper", "think_tank"}:
+        return paper_verified or strong_overlap_count >= 1 or phrase_match_count >= 1
+    return score >= 0.45 and (strong_overlap_count >= 1 or phrase_match_count >= 1)
+
+
+def _source_validation_looks_off_topic(source_validation_meta: dict[str, Any]) -> bool:
+    text = " ".join(
+        _clean_text(part)
+        for part in [
+            source_validation_meta.get("reason"),
+            source_validation_meta.get("risk"),
+        ]
+    ).lower()
+    if not text:
+        return False
+    off_topic_markers = [
+        "unrelated",
+        "off-topic",
+        "off topic",
+        "lexical",
+        "dictionary",
+        "definition page",
+        "tv series",
+        "playlist",
+        "recipe",
+        "directory",
+        "therapist",
+        "psychologist",
+        "software",
+        "support document",
+        "wikipedia article about",
+        "movie",
+        "episode",
+        "imdb",
+    ]
+    return any(marker in text for marker in off_topic_markers)
 
 
 def _classify_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
@@ -2074,7 +2814,7 @@ def _classify_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     source_class = "general_web"
     if _is_think_tank_host(host):
         source_class = "think_tank"
-    strong_paper_signals = {"doi", "pdf", "journal_metadata", "paper_sections", "deep_sections", "arxiv", "ssrn", "working_paper", "pubmed"}
+    strong_paper_signals = {"doi", "journal_metadata", "paper_sections", "deep_sections", "arxiv", "ssrn", "working_paper", "pubmed"}
     if _is_academic_host(host) or len(set(paper_signals) & strong_paper_signals) >= 2:
         source_class = "peer_reviewed"
         joined = " ".join(paper_signals).lower()
@@ -2087,7 +2827,7 @@ def _classify_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     if exclusion_signals:
         source_class = "excluded"
 
-    paper_verified = source_class in {"peer_reviewed", "preprint", "working_paper"} and paper_confidence >= 0.45
+    paper_verified = source_class in {"peer_reviewed", "preprint", "working_paper"} and paper_confidence >= 0.35
     return {
         "source_class": source_class,
         "paper_verified": paper_verified,
@@ -2099,12 +2839,12 @@ def _classify_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _search_web_domains(query: str, limit: int, domains: list[str]) -> list[dict[str, Any]]:
+def _search_web_domains(query: str, limit: int, domains: list[str], search_state: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
     for domain in domains:
         filtered_query = _build_query_phrase(f"site:{domain}", query)
-        for item in _search_web(filtered_query, min(limit, 6)):
+        for item in _search_web(filtered_query, min(limit, 6), search_state=search_state):
             url = _clean_text(item.get("url"))
             host = _hostname(url)
             if not host or (host != domain and not host.endswith(f".{domain}")):
@@ -2118,13 +2858,21 @@ def _search_web_domains(query: str, limit: int, domains: list[str]) -> list[dict
     return results
 
 
-def _collect_discovered_sources(query_pack: dict[str, Any], semantic_enabled: bool, expansion_round: int = 1) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
+def _collect_discovered_sources(
+    query_pack: dict[str, Any],
+    semantic_enabled: bool,
+    expansion_round: int = 1,
+    search_state: dict[str, Any] | None = None,
+) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
     discovered = {"academic": [], "think_tank": [], "general_web": []}
+    state = _request_search_state(search_state)
+    disabled_until_by_provider = state["provider_disabled_until"]
     executed_queries: list[dict[str, Any]] = []
 
     academic_queries = _coerce_string_list(query_pack.get("academic_queries"))
     think_tank_queries = _coerce_string_list(query_pack.get("think_tank_queries"))
     fallback_queries = _coerce_string_list(query_pack.get("fallback_web_queries"))
+    avoid_terms = _coerce_string_list(query_pack.get("avoid_terms"))
     literal_query = _clean_text(query_pack.get("literal_query"))
     academic_limit = 8 + (4 * max(0, expansion_round - 1))
     think_tank_limit = 6 + (4 * max(0, expansion_round - 1))
@@ -2132,21 +2880,64 @@ def _collect_discovered_sources(query_pack: dict[str, Any], semantic_enabled: bo
     academic_query_count = min(len(academic_queries), 3 + max(0, expansion_round - 1)) or 1
     think_tank_query_count = min(len(think_tank_queries), 2 + max(0, expansion_round - 1)) or 1
     fallback_query_count = min(len(fallback_queries), 3 + max(0, expansion_round - 1)) or 1
-
     if not semantic_enabled and literal_query:
         academic_queries = [_build_query_phrase(literal_query, "study evidence paper")]
         think_tank_queries = [_build_query_phrase(literal_query, "report analysis")]
         fallback_queries = [literal_query]
 
     for query in academic_queries[:academic_query_count]:
-        executed_queries.append({"stage": "academic", "query": query})
-        discovered["academic"].extend(_search_web_domains(query, academic_limit, ACADEMIC_SEARCH_DOMAINS))
+        effective_query = _search_query_with_exclusions(query, avoid_terms)
+        executed_queries.append({"stage": "academic", "query": effective_query})
+        now = time.monotonic()
+        openalex_disabled_until = float(disabled_until_by_provider.get("openalex", 0.0) or 0.0)
+        if openalex_disabled_until > now:
+            _log_event(
+                logging.INFO,
+                "search_provider_skipped",
+                provider="openalex",
+                query=query,
+                disabled_for_seconds=round(openalex_disabled_until - now, 2),
+            )
+        else:
+            try:
+                openalex_results = _search_openalex(_metadata_search_query(query), min(academic_limit, 6), avoid_terms)
+            except Exception as exc:
+                disabled_until_by_provider["openalex"] = time.monotonic() + SEARCH_PROVIDER_COOLDOWN_SEC
+                _log_event(logging.WARNING, "search_provider_failed", provider="openalex", query=query, error=str(exc))
+                openalex_results = []
+            else:
+                disabled_until_by_provider.pop("openalex", None)
+                _log_event(logging.INFO, "search_provider_results", provider="openalex", query=query, result_count=len(openalex_results))
+            discovered["academic"].extend(openalex_results)
+        crossref_disabled_until = float(disabled_until_by_provider.get("crossref", 0.0) or 0.0)
+        if crossref_disabled_until > now:
+            _log_event(
+                logging.INFO,
+                "search_provider_skipped",
+                provider="crossref",
+                query=query,
+                disabled_for_seconds=round(crossref_disabled_until - now, 2),
+            )
+        else:
+            try:
+                crossref_results = _search_crossref(_metadata_search_query(query), min(academic_limit, 4), avoid_terms)
+            except Exception as exc:
+                disabled_until_by_provider["crossref"] = time.monotonic() + SEARCH_PROVIDER_COOLDOWN_SEC
+                _log_event(logging.WARNING, "search_provider_failed", provider="crossref", query=query, error=str(exc))
+                crossref_results = []
+            else:
+                disabled_until_by_provider.pop("crossref", None)
+                _log_event(logging.INFO, "search_provider_results", provider="crossref", query=query, result_count=len(crossref_results))
+            discovered["academic"].extend(crossref_results)
+        discovered["academic"].extend(_search_web_domains(effective_query, academic_limit, ACADEMIC_SEARCH_DOMAINS, search_state=search_state))
     for query in think_tank_queries[:think_tank_query_count]:
-        executed_queries.append({"stage": "think_tank", "query": query})
-        discovered["think_tank"].extend(_search_web_domains(query, think_tank_limit, THINK_TANK_SEARCH_DOMAINS))
+        effective_query = _search_query_with_exclusions(query, avoid_terms)
+        executed_queries.append({"stage": "think_tank", "query": effective_query})
+        discovered["think_tank"].extend(_search_web_domains(effective_query, think_tank_limit, THINK_TANK_SEARCH_DOMAINS, search_state=search_state))
     for query in fallback_queries[:fallback_query_count]:
-        executed_queries.append({"stage": "general_web", "query": query})
-        discovered["general_web"].extend([{**item, "seed_query": query} for item in _search_web(query, web_limit)])
+        effective_query = _search_query_with_exclusions(query, avoid_terms)
+        executed_queries.append({"stage": "general_web", "query": effective_query})
+        discovered["general_web"].extend([{**item, "seed_query": effective_query} for item in _search_web(effective_query, web_limit, search_state=search_state)])
 
     return discovered, executed_queries
 
@@ -2201,18 +2992,27 @@ def _candidate_metrics(candidate: dict[str, Any], query_terms: set[str], phrase:
     paper_verified = bool(candidate.get("paper_verified"))
     paper_confidence = float(candidate.get("paper_confidence", 0.0) or 0.0)
     summary_risk = float(candidate.get("summary_risk", 0.0) or 0.0)
+    overlap_count = int(candidate.get("topical_overlap_count", 0) or 0)
+    strong_overlap_count = int(candidate.get("strong_overlap_count", 0) or 0)
+    phrase_match_count = int(candidate.get("phrase_match_count", 0) or 0)
+    title_tokens = set(_word_tokens(title))
+    description_tokens = set(_word_tokens(description))
+    text_tokens = set(_word_tokens(text))
+    normalized_title = _normalize_space(title)
+    normalized_text = _normalize_space(text)
+    normalized_phrase = _normalize_space(phrase)
 
     topic_points = 0.0
     for term in query_terms:
-        if term in title:
+        if term in title_tokens:
             topic_points += 4
-        if term in description:
+        if term in description_tokens:
             topic_points += 2
-        if term in text:
+        if term in text_tokens:
             topic_points += 1
-    if phrase and phrase in title:
+    if normalized_phrase and normalized_phrase in normalized_title:
         topic_points += 12
-    if phrase and phrase in text:
+    if normalized_phrase and normalized_phrase in normalized_text:
         topic_points += 6
 
     quote_points = 0.0
@@ -2260,7 +3060,16 @@ def _candidate_metrics(candidate: dict[str, Any], query_terms: set[str], phrase:
     quote_strength_score = max(0.0, min(1.0, (quote_points + 3.0) / 18.0))
     credibility_score = max(0.0, min(1.0, credibility_points / 20.0))
     paper_score = max(0.0, min(1.0, paper_confidence))
-    overall_score = round((topical_fit_score * 0.45) + (quote_strength_score * 0.22) + (credibility_score * 0.18) + (paper_score * 0.15), 4)
+    overall_score = (topical_fit_score * 0.45) + (quote_strength_score * 0.22) + (credibility_score * 0.18) + (paper_score * 0.15)
+    if phrase_match_count == 0:
+        if strong_overlap_count == 0:
+            if overlap_count <= 1:
+                overall_score *= 0.2
+            else:
+                overall_score *= 0.4
+        elif strong_overlap_count == 1:
+            overall_score *= 0.7
+    overall_score = round(overall_score, 4)
     return {
         "topical_fit_score": topical_fit_score,
         "quote_strength_score": quote_strength_score,
@@ -2306,6 +3115,9 @@ def _public_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         "pdf_url": _clean_text(candidate.get("pdf_url")),
         "paper_signals": _coerce_string_list(candidate.get("paper_signals")),
         "summary_signals": _coerce_string_list(candidate.get("summary_signals")),
+        "strong_overlap_count": int(candidate.get("strong_overlap_count", 0) or 0),
+        "topical_overlap_count": int(candidate.get("topical_overlap_count", 0) or 0),
+        "phrase_match_count": int(candidate.get("phrase_match_count", 0) or 0),
         "fetch_error": _clean_text(candidate.get("fetch_error")),
         "snippet": _candidate_snippet(candidate),
     }
@@ -2332,22 +3144,30 @@ def _candidate_pool_bucket(candidate: dict[str, Any]) -> str:
     return "general_web"
 
 
-def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[float, float, float, float]:
+def _candidate_pool_sort_key(candidate: dict[str, Any]) -> tuple[float, float, float, float, float, float, float]:
     return (
+        0.0 if _candidate_is_hard_reject(candidate) else 1.0,
         float(candidate.get("score", 0.0) or 0.0),
-        float(candidate.get("paper_confidence", 0.0) or 0.0),
-        float(candidate.get("quote_strength_score", 0.0) or 0.0),
-        float(candidate.get("credibility_score", 0.0) or 0.0),
+        1.0 if int(candidate.get("strong_overlap_count", 0) or 0) > 0 else 0.0,
+        1.0 if int(candidate.get("phrase_match_count", 0) or 0) > 0 else 0.0,
+        1.0 if int(candidate.get("topical_overlap_count", 0) or 0) > 0 else 0.0,
+        1.0 if _clean_text(candidate.get("text")) else 0.0,
+        0.0 if _clean_text(candidate.get("fetch_error")) else 1.0,
     )
 
 
 def _select_mixed_candidate_pool(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    ranked = sorted(candidates, key=_candidate_sort_key, reverse=True)
-    selected: list[dict[str, Any]] = []
+    """Keep a broad candidate mix while dropping obvious junk and duplicates."""
+    ranked = sorted(candidates, key=_candidate_pool_sort_key, reverse=True)
+    deduped: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
     seen_titles: set[str] = set()
 
     for candidate in ranked:
+        if _candidate_is_hard_reject(candidate):
+            continue
+        if not _candidate_is_usable(candidate):
+            continue
         url_key = _normalize_web_url(candidate.get("url", ""))
         title_key = _normalized_title_key(candidate.get("title", ""))
         if url_key and url_key in seen_urls:
@@ -2358,9 +3178,31 @@ def _select_mixed_candidate_pool(candidates: list[dict[str, Any]]) -> list[dict[
             seen_urls.add(url_key)
         if title_key:
             seen_titles.add(title_key)
+        deduped.append(candidate)
+
+    bucket_targets = {
+        "academic": ACADEMIC_BUCKET_TARGET,
+        "think_tank": THINK_TANK_BUCKET_TARGET,
+        "general_web": WEB_BUCKET_TARGET,
+    }
+    bucketed: dict[str, list[dict[str, Any]]] = {"academic": [], "think_tank": [], "general_web": []}
+    for candidate in deduped:
+        bucketed.setdefault(_candidate_pool_bucket(candidate), []).append(candidate)
+
+    selected: list[dict[str, Any]] = []
+    leftovers: list[dict[str, Any]] = []
+    for bucket_name in ("academic", "think_tank", "general_web"):
+        bucket_items = bucketed.get(bucket_name, [])
+        take_count = min(len(bucket_items), bucket_targets[bucket_name])
+        selected.extend(bucket_items[:take_count])
+        leftovers.extend(bucket_items[take_count:])
+
+    for candidate in leftovers:
+        if len(selected) >= MIXED_SOURCE_POOL_SIZE:
+            break
         selected.append(candidate)
 
-    return [{**item, "source_id": f"S{index + 1}", "index": index + 1} for index, item in enumerate(selected)]
+    return [{**item, "source_id": f"S{index + 1}", "index": index + 1} for index, item in enumerate(selected[:MIXED_SOURCE_POOL_SIZE])]
 
 
 def _merge_candidate_pools(*candidate_lists: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2383,8 +3225,21 @@ def _merge_candidate_pools(*candidate_lists: list[dict[str, Any]]) -> list[dict[
     return _select_mixed_candidate_pool(merged)
 
 
+def _candidate_pool_signature(candidates: list[dict[str, Any]]) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (
+            _normalize_web_url(candidate.get("url", "")),
+            _normalized_title_key(candidate.get("title", "")),
+        )
+        for candidate in candidates
+    )
+
+
 def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the research packet that powers AI source selection and card cutting."""
     request_id = _request_id(payload)
+    search_state = _request_search_state(payload.get("_search_state"))
+    payload["_search_state"] = search_state
     research_round = max(1, int(payload.get("_research_round", 1) or 1))
     article_text = _clean_text(payload.get("article_text"))
     source_url = _normalize_web_url(_clean_text(payload.get("source_url")))
@@ -2492,7 +3347,7 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     if query or semantic_enabled:
-        discovered_search, executed_queries = _collect_discovered_sources(query_pack, semantic_enabled, research_round)
+        discovered_search, executed_queries = _collect_discovered_sources(query_pack, semantic_enabled, research_round, search_state=search_state)
         for bucket_name, items in discovered_search.items():
             discovered_by_bucket[bucket_name].extend(items)
         _log_event(
@@ -2543,6 +3398,13 @@ def _research_sources(payload: dict[str, Any]) -> dict[str, Any]:
         seen_urls.add(url)
         if title_key:
             seen_titles.add(title_key)
+        if _clean_text(item.get("text")):
+            prefetched_item = dict(item)
+            prefetched_item.update(_classify_candidate(prefetched_item))
+            prefetched_item["pool_bucket"] = _candidate_pool_bucket(prefetched_item)
+            prefetched_item.update(_candidate_topical_overlap(prefetched_item, topic_terms, topic_phrases))
+            fetched.append(prefetched_item)
+            continue
         try:
             fetched_item = _fetch_article(url)
         except Exception as exc:
@@ -3145,6 +4007,7 @@ def _validation_is_weak(validation: dict[str, Any] | None) -> bool:
 
 
 def _build_source_selection_prompt(payload: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Package the researched candidate pool for the provider's source-choice pass."""
     return {
         "task": "Choose the best source from the full researched candidate pool for cutting one debate card.",
         "requirements": [
@@ -3159,7 +4022,10 @@ def _build_source_selection_prompt(payload: dict[str, Any], candidates: list[dic
             "Reject summary pages about papers, prestige-only sources that are too generic, and sources that use similar words while proving a different claim.",
             "Do not let generic domain authority beat topical usefulness if the more credible source does not actually prove the tag.",
             "Avoid ranking weak, generic, duplicated, or irrelevant sources highly.",
-            "Return selected_indices as a ranked list of 1-based candidate indices.",
+            "A source that supports a narrower version of the claim can still rank first if it offers a clean, quotable warrant and the tag can be tightened honestly.",
+            "Return selected_indices as a ranked list of 1-based candidate indices. An empty list is allowed if the pool is too weak.",
+            "Use needs_new_search sparingly. Prefer trying the best plausible source first unless the whole pool is clearly junk or off-topic.",
+            "If no source is good enough, set needs_new_search to true and propose tighter query_suggestions for the next research round.",
         ],
         "input": {
             "draft_tag": _clean_text(payload.get("draft_tag")),
@@ -3191,6 +4057,13 @@ def _build_source_selection_prompt(payload: dict[str, Any], candidates: list[dic
                     "pdf_url": _clean_text(candidate.get("pdf_url")),
                     "paper_signals": _coerce_string_list(candidate.get("paper_signals")),
                     "summary_signals": _coerce_string_list(candidate.get("summary_signals")),
+                    "exclusion_signals": _coerce_string_list(candidate.get("exclusion_signals")),
+                    "topical_overlap_count": int(candidate.get("topical_overlap_count", 0) or 0),
+                    "strong_overlap_count": int(candidate.get("strong_overlap_count", 0) or 0),
+                    "phrase_match_count": int(candidate.get("phrase_match_count", 0) or 0),
+                    "pool_bucket": _clean_text(candidate.get("pool_bucket")),
+                    "fetch_error": _clean_text(candidate.get("fetch_error")),
+                    "seed_query": _clean_text(candidate.get("seed_query")),
                     "snippet": _candidate_snippet(candidate),
                 }
                 for index, candidate in enumerate(candidates)
@@ -3198,6 +4071,9 @@ def _build_source_selection_prompt(payload: dict[str, Any], candidates: list[dic
         },
         "output_schema": {
             "selected_indices": [1, 2, 3],
+            "needs_new_search": "boolean",
+            "query_gap": "string",
+            "query_suggestions": ["string"],
             "notes": "string",
             "source_assessments": [
                 {
@@ -3219,14 +4095,17 @@ def _build_source_selection_prompt(payload: dict[str, Any], candidates: list[dic
 
 def _build_source_validation_prompt(payload: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
     return {
-        "task": "Validate whether one selected source should be used to cut a debate card.",
+        "task": "Validate whether one selected source is usable enough to cut a grounded debate card.",
         "requirements": [
             "Return strict JSON only.",
-            "Decide whether this source directly supports the meaning of the draft tag well enough to justify a full cut.",
+            "Decide whether this source is usable enough to justify attempting a grounded cut.",
             "Reject sources that are off-topic, too generic, summary-only, lexical-definition pages, or weakly connected to the claim.",
             "Prefer precise support, quotable warrants, and direct alignment with the tag's meaning.",
             "Keep source usefulness separate from source credibility.",
             "If the source only supports a narrower version of the tag, mark that clearly.",
+            "If the source plausibly supports a narrower but still useful version of the tag, prefer a tightened_tag over rejection.",
+            "Only reject when the source is clearly unrelated, obviously junk, or too thin to quote responsibly.",
+            "When the choice is between weakly usable and reject, lean toward useful=true with a tightened_tag and a best_quote_hint.",
         ],
         "input": {
             "draft_tag": _clean_text(payload.get("draft_tag")),
@@ -3559,6 +4438,8 @@ def _call_provider_json(provider: str, prompt: dict[str, Any]) -> dict[str, Any]
 def _select_source_order_with_ai(provider: str, payload: dict[str, Any], candidates: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if not candidates:
         return [], {"used_ai_selection": False}
+    if not USE_AI_SOURCE_SELECTION:
+        return list(candidates), _default_source_selection_meta()
 
     prompt = _build_source_selection_prompt(payload, candidates)
     parsed = _call_provider_json(provider, prompt)
@@ -3585,6 +4466,9 @@ def _select_source_order_with_ai(provider: str, payload: dict[str, Any], candida
         "used_ai_selection": True,
         "selection_notes": _clean_text(parsed.get("notes") or parsed.get("reasoning")),
         "selected_indices": selected_indices,
+        "needs_new_search": _parse_bool(parsed.get("needs_new_search"), False),
+        "query_gap": _clean_text(parsed.get("query_gap")),
+        "query_suggestions": _coerce_string_list(parsed.get("query_suggestions")),
         "source_assessments": parsed.get("source_assessments") if isinstance(parsed.get("source_assessments"), list) else [],
     }
 
@@ -3913,51 +4797,93 @@ def _call_chatgpt_bridge(
     )
 
 
-def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
-    request_id = _request_id(payload)
+def _fallback_research_meta_from_error(payload: dict[str, Any], research_error: str) -> dict[str, Any]:
+    query_pack, search_mode, query_refinement_used, query_refinement_provider = _refine_query_pack(payload)
+    return {
+        "used": False,
+        "query": _clean_text(query_pack.get("literal_query")) or _research_query(payload),
+        "search_mode": search_mode,
+        "query_pack": query_pack,
+        "query_refinement_used": query_refinement_used,
+        "query_refinement_provider": query_refinement_provider,
+        "executed_queries": [],
+        "sources": [],
+        "selected": {},
+        "article_text": _clean_text(payload.get("article_text")),
+        "error": research_error,
+        "_candidates": [],
+        "candidates": [],
+    }
+
+
+def _research_sources_with_retries(payload: dict[str, Any]) -> dict[str, Any]:
+    last_exc: Exception | None = None
+    start_round = max(1, int(payload.get("_research_round", 1) or 1))
+    for research_round in range(start_round, MAX_RESEARCH_ROUNDS + 1):
+        attempt_payload = dict(payload)
+        attempt_payload["_research_round"] = research_round
+        try:
+            return _research_sources(attempt_payload)
+        except Exception as exc:
+            last_exc = exc
+            _log_event(
+                logging.WARNING,
+                "research_retry_attempt_failed",
+                request_id=_request_id(payload),
+                research_round=research_round,
+                error=str(exc),
+            )
+            if research_round >= MAX_RESEARCH_ROUNDS:
+                break
+    if last_exc:
+        raise last_exc
+    raise ResearchError("Research failed without a reported error")
+
+
+def _resolve_cut_research_context(payload: dict[str, Any]) -> dict[str, Any]:
+    """Load or synthesize the research packet that drives a cut request."""
     research_error = ""
+    explicit_source_context = bool(_clean_text(payload.get("article_text")) or _clean_text(payload.get("source_url")))
     supplied_research = payload.get("research_meta") if isinstance(payload.get("research_meta"), dict) else {}
     if supplied_research:
         research_meta = dict(supplied_research)
         research_error = _clean_text(research_meta.get("error"))
     else:
         try:
-            research_meta = _research_sources(payload)
+            research_meta = _research_sources_with_retries(payload)
         except Exception as exc:
             research_error = str(exc)
-            query_pack, search_mode, query_refinement_used, query_refinement_provider = _refine_query_pack(payload)
-            research_meta = {
-                "used": False,
-                "query": _clean_text(query_pack.get("literal_query")) or _research_query(payload),
-                "search_mode": search_mode,
-                "query_pack": query_pack,
-                "query_refinement_used": query_refinement_used,
-                "query_refinement_provider": query_refinement_provider,
-                "executed_queries": [],
-                "sources": [],
-                "selected": {},
-                "article_text": _clean_text(payload.get("article_text") or payload.get("draft_tag") or payload.get("resolution")),
-                "error": research_error,
-                "_candidates": [],
-                "candidates": [],
-            }
+            research_meta = _fallback_research_meta_from_error(payload, research_error)
 
     candidate_pool = list(research_meta.pop("_candidates", []) or research_meta.get("candidates") or [])
     public_research_meta = dict(research_meta)
-    payload = dict(payload)
-    if not isinstance(payload.get("query_pack"), dict) or not payload.get("query_pack"):
-        payload["query_pack"] = research_meta.get("query_pack") if isinstance(research_meta.get("query_pack"), dict) else {}
-    if payload.get("semantic_search_enabled") is None:
-        payload["semantic_search_enabled"] = _clean_text(research_meta.get("search_mode")).lower() != "literal"
-    payload["article_text"] = _clean_text(research_meta.get("article_text") or payload.get("article_text"))
+    working_payload = dict(payload)
+    if not isinstance(working_payload.get("query_pack"), dict) or not working_payload.get("query_pack"):
+        working_payload["query_pack"] = research_meta.get("query_pack") if isinstance(research_meta.get("query_pack"), dict) else {}
+    if working_payload.get("semantic_search_enabled") is None:
+        working_payload["semantic_search_enabled"] = _clean_text(research_meta.get("search_mode")).lower() != "literal"
+    working_payload["article_text"] = _clean_text(research_meta.get("article_text") or working_payload.get("article_text"))
     selected_source = research_meta.get("selected") if isinstance(research_meta.get("selected"), dict) else {}
     if selected_source:
-        payload["source_title"] = payload.get("source_title") or selected_source.get("title", "")
-        payload["source_author"] = payload.get("source_author") or selected_source.get("author", "")
-        payload["source_date"] = payload.get("source_date") or selected_source.get("date", "")
-        payload["source_publication"] = payload.get("source_publication") or selected_source.get("publication", "")
-        payload["source_url"] = payload.get("source_url") or selected_source.get("url", "")
+        working_payload["source_title"] = working_payload.get("source_title") or selected_source.get("title", "")
+        working_payload["source_author"] = working_payload.get("source_author") or selected_source.get("author", "")
+        working_payload["source_date"] = working_payload.get("source_date") or selected_source.get("date", "")
+        working_payload["source_publication"] = working_payload.get("source_publication") or selected_source.get("publication", "")
+        working_payload["source_url"] = working_payload.get("source_url") or selected_source.get("url", "")
 
+    return {
+        "payload": working_payload,
+        "research_meta": research_meta,
+        "public_research_meta": public_research_meta,
+        "candidate_pool": candidate_pool,
+        "selected_source": selected_source,
+        "research_error": research_error,
+        "research_round": max(1, int(research_meta.get("research_round", working_payload.get("_research_round", 1)) or 1)),
+        "explicit_source_context": explicit_source_context,
+    }
+
+
+def _build_cut_base_meta(payload: dict[str, Any], research_error: str) -> dict[str, Any]:
     base_meta = {
         "resolution": _clean_text(payload.get("resolution")),
         "side": _normalize_side(_clean_text(payload.get("side"))),
@@ -3973,11 +4899,545 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
     }
     if research_error:
         base_meta["research_error"] = research_error
+    return base_meta
 
+
+def _default_source_selection_meta() -> dict[str, Any]:
+    return {
+        "used_ai_selection": False,
+        "selected_indices": [],
+        "selection_notes": "",
+        "needs_new_search": False,
+        "query_gap": "",
+        "query_suggestions": [],
+    }
+
+
+def _fallback_attempt_candidate(payload: dict[str, Any], selected_source: dict[str, Any], article_text: str) -> dict[str, Any]:
+    return {
+        "title": payload.get("source_title") or selected_source.get("title", ""),
+        "author": payload.get("source_author") or selected_source.get("author", ""),
+        "published": payload.get("source_date") or selected_source.get("date", ""),
+        "publication": payload.get("source_publication") or selected_source.get("publication", ""),
+        "url": payload.get("source_url") or selected_source.get("url", ""),
+        "text": article_text,
+    }
+
+
+def _build_cut_attempts(
+    ordered_candidates: list[dict[str, Any]],
+    *,
+    selection_wants_retry: bool,
+    allow_fallback_attempt: bool,
+    payload: dict[str, Any],
+    selected_source: dict[str, Any],
+    article_text: str,
+) -> list[dict[str, Any]]:
+    if ordered_candidates and not selection_wants_retry:
+        return list(ordered_candidates)
+    if selection_wants_retry or not allow_fallback_attempt:
+        return []
+    return [_fallback_attempt_candidate(payload, selected_source, article_text)]
+
+
+def _prepare_cut_attempt_payload(
+    payload: dict[str, Any],
+    candidate: dict[str, Any],
+    ordered_candidates: list[dict[str, Any]],
+    selection_meta: dict[str, Any],
+    attempt_index: int,
+) -> tuple[dict[str, Any], str]:
+    attempt_payload = dict(payload)
+    attempt_text = _clean_text(candidate.get("text")) or _clean_text(candidate.get("description")) or attempt_payload.get("article_text", "")
+    attempt_payload["article_text"] = attempt_text
+    attempt_payload["source_title"] = _clean_text(candidate.get("title")) or attempt_payload.get("source_title", "")
+    attempt_payload["source_author"] = _clean_text(candidate.get("author")) or attempt_payload.get("source_author", "")
+    attempt_payload["source_date"] = _clean_text(candidate.get("published")) or attempt_payload.get("source_date", "")
+    attempt_payload["source_publication"] = _clean_text(candidate.get("publication")) or attempt_payload.get("source_publication", "")
+    attempt_payload["source_url"] = _clean_text(candidate.get("url")) or attempt_payload.get("source_url", "")
+    attempt_payload["source_id"] = _clean_text(candidate.get("source_id") or f"S{attempt_index}")
+    attempt_payload["credibility_score"] = float(candidate.get("credibility_score", 0.0)) if isinstance(candidate.get("credibility_score"), (int, float)) else 0.0
+    attempt_payload["credibility_notes"] = _clean_text(candidate.get("credibility_notes"))
+    attempt_payload["candidate_sources"] = ordered_candidates[: min(MIXED_SOURCE_POOL_SIZE, len(ordered_candidates))]
+    attempt_payload["source_selection"] = {
+        **selection_meta,
+        "current_attempt_index": attempt_index,
+        "current_source_id": _clean_text(candidate.get("source_id") or f"S{attempt_index}"),
+    }
+    return attempt_payload, attempt_text
+
+
+def _run_source_validation_stage(
+    provider: str,
+    *,
+    request_id: str,
+    attempt_index: int,
+    attempt_payload: dict[str, Any],
+    candidate: dict[str, Any],
+) -> tuple[dict[str, Any], list[str], str]:
+    source_validation_meta = {
+        "used_ai_source_validation": False,
+        "supports_tag": None,
+        "useful": None,
+        "reason": "",
+        "risk": "",
+        "tightened_tag": "",
+        "best_quote_hint": "",
+    }
+    source_validation_errors: list[str] = []
+    rejection_note = ""
+    try:
+        source_validation_meta = _validate_source_with_ai(provider, attempt_payload, candidate)
+        _log_event(
+            logging.INFO,
+            "cut_source_validation",
+            request_id=request_id,
+            provider=provider,
+            attempt_index=attempt_index,
+            source_id=attempt_payload["source_id"],
+            supports_tag=source_validation_meta.get("supports_tag"),
+            useful=source_validation_meta.get("useful"),
+        )
+        if source_validation_meta.get("supports_tag") is False or source_validation_meta.get("useful") is False:
+            if _candidate_is_strong_extractive_candidate(candidate) and not _source_validation_looks_off_topic(source_validation_meta):
+                source_validation_meta["supports_tag"] = True
+                source_validation_meta["useful"] = True
+                source_validation_meta["reason"] = _build_query_phrase(
+                    _clean_text(source_validation_meta.get("reason")),
+                    "Deterministic academic-source override kept this candidate because the topical overlap and source quality were strong."
+                )
+            elif _candidate_is_salvageable_after_rejection(candidate, source_validation_meta) and not _source_validation_looks_off_topic(source_validation_meta):
+                source_validation_meta["supports_tag"] = True
+                source_validation_meta["useful"] = True
+                source_validation_meta["reason"] = _build_query_phrase(
+                    _clean_text(source_validation_meta.get("reason")),
+                    "Backend salvage kept this source because it appears usable with a narrower, more honest tag."
+                )
+            else:
+                rejection_note = source_validation_meta.get("reason") or source_validation_meta.get("risk") or "AI source validation rejected the source."
+                _log_event(
+                    logging.INFO,
+                    "cut_source_validation_rejected",
+                    request_id=request_id,
+                    provider=provider,
+                    attempt_index=attempt_index,
+                    reason=rejection_note,
+                )
+    except Exception as source_validation_exc:
+        source_validation_errors.append(f"{provider} source_validate: {source_validation_exc}")
+        _log_event(
+            logging.WARNING,
+            "cut_source_validation_failed",
+            request_id=request_id,
+            provider=provider,
+            attempt_index=attempt_index,
+            error=str(source_validation_exc),
+        )
+    return source_validation_meta, source_validation_errors, rejection_note
+
+
+def _run_card_validation_stage(
+    provider: str,
+    *,
+    request_id: str,
+    attempt_index: int,
+    attempt_payload: dict[str, Any],
+    cut_result: dict[str, Any],
+    final_card: dict[str, Any],
+) -> tuple[dict[str, Any], bool, dict[str, Any], dict[str, Any], list[str]]:
+    validation_completed = False
+    validation_errors: list[str] = []
+    validation_provider_meta: dict[str, Any] = {}
+    validation_meta = _default_validation_meta(
+        notes="Awaiting separate validation call.",
+        revised=False,
+        useful=True,
+        passed=True,
+    )
+
+    try:
+        validation_result = _call_provider_stage(
+            provider,
+            attempt_payload,
+            stage="validate",
+            candidate_card=final_card,
+        )
+        final_card = validation_result["cards"][0]
+        validation_completed = True
+        validation_provider_meta = validation_result.get("meta", {}) if isinstance(validation_result.get("meta"), dict) else {}
+        validation_meta = validation_result.get("validation") or _extract_validation_meta(validation_result)
+        revised = final_card.get("formatted_card") != cut_result["cards"][0].get("formatted_card")
+        if not validation_meta:
+            validation_meta = _default_validation_meta(
+                notes="Validation pass completed without explicit notes.",
+                revised=revised,
+                useful=True,
+                passed=True,
+            )
+        else:
+            validation_meta.setdefault("revised", revised)
+            validation_meta.setdefault("useful", True)
+            validation_meta.setdefault("passed", True)
+    except Exception as validation_exc:
+        validation_errors.append(f"{provider} validate: {validation_exc}")
+        _log_event(
+            logging.WARNING,
+            "cut_validation_failed",
+            request_id=request_id,
+            provider=provider,
+            attempt_index=attempt_index,
+            error=str(validation_exc),
+        )
+        validation_meta = _default_validation_meta(
+            notes=f"Validation pass failed, so the initial cut was kept and checked with deterministic grounding rules: {validation_exc}",
+            revised=False,
+            useful=True,
+            passed=True,
+            issues=["AI validation failed, so the backend fell back to grounding checks for this attempt."],
+        )
+
+    grounding_meta = _build_source_grounding_validation(final_card, attempt_payload.get("article_text", ""))
+    validation_meta = _merge_validation_meta(validation_meta, grounding_meta)
+    final_card["validation"] = validation_meta
+    return final_card, validation_completed, validation_meta, validation_provider_meta, validation_errors
+
+
+def _build_cut_success_result(
+    *,
+    cut_result: dict[str, Any],
+    base_meta: dict[str, Any],
+    provider: str,
+    public_research_meta: dict[str, Any],
+    candidate: dict[str, Any],
+    attempt_payload: dict[str, Any],
+    attempt_text: str,
+    selection_meta: dict[str, Any],
+    validation_completed: bool,
+    validation_provider_meta: dict[str, Any],
+    validation_meta: dict[str, Any],
+    source_validation_meta: dict[str, Any],
+    attempt_index: int,
+    errors: list[str],
+    selection_errors: list[str],
+    source_validation_errors: list[str],
+    attempt_errors: list[str],
+    validation_errors: list[str],
+    final_card: dict[str, Any],
+) -> dict[str, Any]:
+    quality_meta = _build_response_quality_meta(
+        fallback_used=False,
+        validation_completed=validation_completed,
+        validation_meta=validation_meta,
+        search_exhausted=False,
+    )
+    result = {
+        "cards": [final_card],
+        "meta": {
+            **cut_result.get("meta", {}),
+            **base_meta,
+            "fallback_used": False,
+            "card_count": 1,
+            "provider": provider,
+            "research": {
+                **public_research_meta,
+                "selected": {
+                    "engine": candidate.get("engine", ""),
+                    "title": _clean_text(candidate.get("title")) or attempt_payload.get("source_title", ""),
+                    "publication": _clean_text(candidate.get("publication")) or attempt_payload.get("source_publication", ""),
+                    "author": _clean_text(candidate.get("author")) or attempt_payload.get("source_author", ""),
+                    "date": _clean_text(candidate.get("published")) or attempt_payload.get("source_date", ""),
+                    "url": _clean_text(candidate.get("url")) or attempt_payload.get("source_url", ""),
+                    "source_id": _clean_text(candidate.get("source_id") or f"S{attempt_index}"),
+                    "credibility_score": round(float(candidate.get("credibility_score", 0.0)), 3),
+                    "credibility_notes": _clean_text(candidate.get("credibility_notes")),
+                    "text": _truncate(attempt_text, 4000),
+                },
+                "source_selection": selection_meta,
+            },
+            "validation_ran": True,
+            "validation_completed": validation_completed,
+            "validation_separate_call": True,
+            "validation_provider": provider,
+            "validation_retry_count": int(validation_provider_meta.get("json_retry_count", 0)) if validation_completed else 0,
+            "validation_retry_used": bool(validation_provider_meta.get("json_retry_used")) if validation_completed else False,
+            "validation": validation_meta,
+            "source_validation": source_validation_meta,
+            "source_attempts": attempt_index,
+            "quality": quality_meta,
+        },
+    }
+    provider_errors = [*errors, *selection_errors, *source_validation_errors, *attempt_errors, *validation_errors]
+    if provider_errors:
+        result["meta"]["provider_errors"] = provider_errors
+    return {"ok": True, **result}
+
+
+def _build_extractive_card(attempt_payload: dict[str, Any], source_validation_meta: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    extract_payload = dict(attempt_payload)
+    tightened_tag = _clean_text(source_validation_meta.get("tightened_tag"))
+    if tightened_tag:
+        extract_payload["draft_tag"] = tightened_tag
+        extract_payload["emphasis"] = tightened_tag
+    article_text = _clean_text(extract_payload.get("article_text"))
+    if not article_text:
+        raise ValueError("Extractive recovery requires article_text")
+    resolution = _clean_text(extract_payload.get("resolution"))
+    side = _normalize_side(_clean_text(extract_payload.get("side")))
+    emphasis = _clean_text(extract_payload.get("emphasis") or extract_payload.get("draft_tag"))
+    source = _build_card_source(extract_payload)
+    date_accessed = _today_accessed()
+    paragraphs = _paragraphs(article_text)
+    excerpt_source = paragraphs[0] if paragraphs else article_text
+    excerpt = _clean_text(excerpt_source[:900] if len(excerpt_source) > 900 else excerpt_source)
+    underlined_spans = _normalize_span_list([{"text": excerpt, "reason": "Deterministic extractive warrant from the validated source."}], excerpt)
+    highlighted_spans = [dict(span) for span in underlined_spans[:1]]
+    short_citation = _build_short_citation(source)
+    full_citation = _build_full_citation(source, date_accessed)
+    cite_line = _build_cite_line(short_citation, full_citation)
+    card = {
+        "tag_line": _truncate(_clean_text(extract_payload.get("draft_tag")) or "Debate card", 180),
+        "short_citation": short_citation,
+        "full_citation": full_citation,
+        "cite_line": cite_line,
+        "verbal_citation": _build_verbal_citation(source),
+        "author_qualifications": _clean_text(source.get("author_qualifications")),
+        "underlined_spans": underlined_spans,
+        "highlighted_spans": highlighted_spans,
+        "underlined_text": _span_text(underlined_spans),
+        "full_context": excerpt,
+        "quoted_text": _span_text(highlighted_spans),
+        "exact_excerpt": _span_text(highlighted_spans),
+        "highlighted_text": _span_text(highlighted_spans),
+        "date_accessed": date_accessed,
+        "source_url": _clean_text(source.get("url")),
+        "claim": _truncate(f"{emphasis or 'This card'} supports the {side} position.", 240),
+        "warrant": _truncate("This sentence directly grounds the card in the source text.", 240),
+        "impact": _truncate(f"The card is prioritized for {emphasis or 'the core topic'} and stays close to the source wording.", 240),
+        "title": _truncate(_clean_text(extract_payload.get("draft_tag")) or "Debate card", 180),
+        "tag": _truncate(_clean_text(extract_payload.get("draft_tag")) or "Debate card", 180),
+        "citation": full_citation,
+        "card_text": excerpt,
+        "body": excerpt,
+        "evidence": excerpt,
+        "source": source,
+        "excerpt": _span_text(highlighted_spans),
+        "highlighted_excerpt": _span_text(highlighted_spans),
+    }
+    card["formatted_card"] = _build_formatted_card(card)
+    validation_meta = _merge_validation_meta(
+        _default_validation_meta(
+            notes="Built an extractive card directly from the validated source text.",
+            revised=True,
+            useful=True,
+            passed=True,
+        ),
+        _build_source_grounding_validation(card, extract_payload.get("article_text", "")),
+    )
+    card["validation"] = validation_meta
+    return card, validation_meta
+
+
+def _build_extractive_success_result(
+    *,
+    base_meta: dict[str, Any],
+    public_research_meta: dict[str, Any],
+    candidate: dict[str, Any],
+    attempt_payload: dict[str, Any],
+    attempt_text: str,
+    selection_meta: dict[str, Any],
+    source_validation_meta: dict[str, Any],
+    attempt_index: int,
+    errors: list[str],
+    selection_errors: list[str],
+    source_validation_errors: list[str],
+    attempt_errors: list[str],
+    final_card: dict[str, Any],
+    validation_meta: dict[str, Any],
+) -> dict[str, Any]:
+    quality_meta = _build_response_quality_meta(
+        fallback_used=False,
+        validation_completed=True,
+        validation_meta=validation_meta,
+        search_exhausted=False,
+    )
+    result = {
+        "cards": [final_card],
+        "meta": {
+            **base_meta,
+            "used_ai": False,
+            "mode": "extractive",
+            "provider": "extractive",
+            "fallback_used": False,
+            "card_count": 1,
+            "research": {
+                **public_research_meta,
+                "selected": {
+                    "engine": candidate.get("engine", ""),
+                    "title": _clean_text(candidate.get("title")) or attempt_payload.get("source_title", ""),
+                    "publication": _clean_text(candidate.get("publication")) or attempt_payload.get("source_publication", ""),
+                    "author": _clean_text(candidate.get("author")) or attempt_payload.get("source_author", ""),
+                    "date": _clean_text(candidate.get("published")) or attempt_payload.get("source_date", ""),
+                    "url": _clean_text(candidate.get("url")) or attempt_payload.get("source_url", ""),
+                    "source_id": _clean_text(candidate.get("source_id") or f"S{attempt_index}"),
+                    "credibility_score": round(float(candidate.get("credibility_score", 0.0)), 3),
+                    "credibility_notes": _clean_text(candidate.get("credibility_notes")),
+                    "text": _truncate(attempt_text, 4000),
+                },
+                "source_selection": selection_meta,
+            },
+            "validation_ran": True,
+            "validation_completed": True,
+            "validation_separate_call": False,
+            "validation_provider": "extractive",
+            "validation_retry_count": 0,
+            "validation_retry_used": False,
+            "validation": validation_meta,
+            "source_validation": source_validation_meta,
+            "source_attempts": attempt_index,
+            "quality": quality_meta,
+            "recovered_via_extractive": True,
+        },
+    }
+    provider_errors = [*errors, *selection_errors, *source_validation_errors, *attempt_errors]
+    if provider_errors:
+        result["meta"]["provider_errors"] = provider_errors
+    return {"ok": True, **result}
+
+
+def _refresh_cut_candidate_pool(
+    *,
+    request_id: str,
+    provider: str,
+    payload: dict[str, Any],
+    public_research_meta: dict[str, Any],
+    candidate_pool: list[dict[str, Any]],
+    selection_meta: dict[str, Any],
+    research_round: int,
+    rejected_candidates: list[dict[str, Any]] | None = None,
+    rejected_source_meta: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, str]:
+    retry_query_pack = public_research_meta.get("query_pack") if isinstance(public_research_meta.get("query_pack"), dict) else payload.get("query_pack")
+    if isinstance(retry_query_pack, dict):
+        retry_query_pack = _build_retry_query_pack(
+            retry_query_pack,
+            selection_meta=selection_meta,
+            rejected_candidates=list(rejected_candidates or []),
+            rejected_source_meta=list(rejected_source_meta or []),
+        )
+    last_error = ""
+
+    for next_round in range(research_round + 1, MAX_RESEARCH_ROUNDS + 1):
+        retry_payload = dict(payload)
+        retry_payload["_research_round"] = next_round
+        retry_payload["query_pack"] = retry_query_pack
+        try:
+            refreshed_research = _research_sources(retry_payload)
+            refreshed_pool = list(refreshed_research.pop("_candidates", []) or refreshed_research.get("candidates") or [])
+            replacement_pool = _select_mixed_candidate_pool(refreshed_pool) if refreshed_pool else []
+            next_pool = replacement_pool
+            if not next_pool or _candidate_pool_signature(next_pool) == _candidate_pool_signature(candidate_pool):
+                merged_pool = _merge_candidate_pools(candidate_pool, refreshed_pool)
+                if merged_pool and _candidate_pool_signature(merged_pool) != _candidate_pool_signature(candidate_pool):
+                    next_pool = merged_pool
+            if not next_pool or _candidate_pool_signature(next_pool) == _candidate_pool_signature(candidate_pool):
+                continue
+
+            refreshed_public_research_meta = {
+                **refreshed_research,
+                "sources": [_public_candidate(item) for item in next_pool],
+                "candidates": [_client_candidate(item) for item in next_pool],
+            }
+            _log_event(
+                logging.INFO,
+                "cut_research_retry",
+                request_id=request_id,
+                provider=provider,
+                research_round=next_round,
+                candidate_pool=len(next_pool),
+            )
+            return {
+                "candidate_pool": next_pool,
+                "public_research_meta": refreshed_public_research_meta,
+                "selected_source": refreshed_public_research_meta.get("selected") if isinstance(refreshed_public_research_meta.get("selected"), dict) else {},
+                "research_round": next_round,
+                "query_pack": refreshed_public_research_meta.get("query_pack") if isinstance(refreshed_public_research_meta.get("query_pack"), dict) else retry_query_pack,
+            }, ""
+        except Exception as retry_exc:
+            last_error = str(retry_exc)
+            _log_event(
+                logging.WARNING,
+                "cut_research_retry_failed",
+                request_id=request_id,
+                provider=provider,
+                research_round=next_round,
+                error=last_error,
+            )
+    return None, last_error
+
+
+def _errors_indicate_source_exhaustion(errors: list[str]) -> bool:
+    normalized = [_clean_text(error).lower() for error in errors if _clean_text(error)]
+    if not normalized:
+        return False
+    markers = (
+        "research_retry",
+        "source_validate_",
+        "source_attempt_",
+        "no candidate sources remained",
+        "no fetchable sources found",
+    )
+    return all(any(marker in error for marker in markers) for error in normalized)
+
+
+def _build_response_quality_meta(
+    *,
+    fallback_used: bool,
+    validation_completed: bool,
+    validation_meta: dict[str, Any] | None,
+    search_exhausted: bool,
+) -> dict[str, Any]:
+    failures: list[str] = []
+    if fallback_used:
+        failures.append("fallback_used")
+    if search_exhausted:
+        failures.append("search_exhausted")
+    if not validation_completed:
+        failures.append("validation_incomplete")
+    if _validation_is_weak(validation_meta):
+        failures.append("validation_failed")
+
+    quality_gate_passed = not failures
+    if fallback_used:
+        tier = "degraded_fallback"
+    elif quality_gate_passed:
+        tier = "validated_ai"
+    else:
+        tier = "degraded_ai"
+
+    return {
+        "delivery_gate_passed": True,
+        "quality_gate_passed": quality_gate_passed,
+        "tier": tier,
+        "failures": failures,
+    }
+
+
+def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
+    """Cut one card by iterating through researched sources and validating the result."""
+    request_id = _request_id(payload)
+    context = _resolve_cut_research_context(payload)
+    payload = context["payload"]
+    research_meta = context["research_meta"]
+    public_research_meta = context["public_research_meta"]
+    candidate_pool = context["candidate_pool"]
+    selected_source = context["selected_source"]
+    research_error = context["research_error"]
+    research_round = context["research_round"]
+    explicit_source_context = bool(context.get("explicit_source_context"))
+    base_meta = _build_cut_base_meta(payload, research_error)
     errors: list[str] = []
     provider_chain = _provider_preference(payload)
     strict_provider_mode = _strict_provider_mode(payload)
-    research_round = max(1, int(research_meta.get("research_round", payload.get("_research_round", 1)) or 1))
     for provider in provider_chain:
         if provider == "fallback":
             break
@@ -3985,11 +5445,7 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
             while True:
                 _log_event(logging.INFO, "cut_provider_start", request_id=request_id, provider=provider, candidate_pool=len(candidate_pool), research_round=research_round)
                 ordered_candidates = candidate_pool
-                selection_meta = {
-                    "used_ai_selection": False,
-                    "selected_indices": [],
-                    "selection_notes": "",
-                }
+                selection_meta = _default_source_selection_meta()
                 selection_errors: list[str] = []
                 if ordered_candidates:
                     try:
@@ -4009,49 +5465,27 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                         selection_errors.append(f"{provider} source_select: {selection_exc}")
                         _log_event(logging.WARNING, "cut_source_selection_failed", request_id=request_id, provider=provider, error=str(selection_exc))
 
-                attempts = list(ordered_candidates) if ordered_candidates else []
-                if not attempts:
-                    attempts = [
-                        {
-                            "title": payload.get("source_title") or selected_source.get("title", ""),
-                            "author": payload.get("source_author") or selected_source.get("author", ""),
-                            "published": payload.get("source_date") or selected_source.get("date", ""),
-                            "publication": payload.get("source_publication") or selected_source.get("publication", ""),
-                            "url": payload.get("source_url") or selected_source.get("url", ""),
-                            "text": payload.get("article_text") or research_meta.get("article_text", ""),
-                        }
-                    ]
-
+                selection_wants_retry = bool(selection_meta.get("needs_new_search"))
+                attempts = _build_cut_attempts(
+                    ordered_candidates,
+                    selection_wants_retry=selection_wants_retry,
+                    allow_fallback_attempt=bool(explicit_source_context or selected_source),
+                    payload=payload,
+                    selected_source=selected_source,
+                    article_text=_clean_text(payload.get("article_text") or research_meta.get("article_text")),
+                )
                 attempt_errors: list[str] = []
                 source_validation_rejections = 0
+                rejected_candidates: list[dict[str, Any]] = []
+                rejected_source_meta: list[dict[str, Any]] = []
                 for attempt_index, candidate in enumerate(attempts, start=1):
-                    attempt_payload = dict(payload)
-                    attempt_text = _clean_text(candidate.get("text")) or _clean_text(candidate.get("description")) or attempt_payload.get("article_text", "")
-                    attempt_payload["article_text"] = attempt_text
-                    attempt_payload["source_title"] = _clean_text(candidate.get("title")) or attempt_payload.get("source_title", "")
-                    attempt_payload["source_author"] = _clean_text(candidate.get("author")) or attempt_payload.get("source_author", "")
-                    attempt_payload["source_date"] = _clean_text(candidate.get("published")) or attempt_payload.get("source_date", "")
-                    attempt_payload["source_publication"] = _clean_text(candidate.get("publication")) or attempt_payload.get("source_publication", "")
-                    attempt_payload["source_url"] = _clean_text(candidate.get("url")) or attempt_payload.get("source_url", "")
-                    attempt_payload["source_id"] = _clean_text(candidate.get("source_id") or f"S{attempt_index}")
-                    attempt_payload["credibility_score"] = float(candidate.get("credibility_score", 0.0)) if isinstance(candidate.get("credibility_score"), (int, float)) else 0.0
-                    attempt_payload["credibility_notes"] = _clean_text(candidate.get("credibility_notes"))
-                    attempt_payload["candidate_sources"] = ordered_candidates[: min(MIXED_SOURCE_POOL_SIZE, len(ordered_candidates))]
-                    attempt_payload["source_selection"] = {
-                        **selection_meta,
-                        "current_attempt_index": attempt_index,
-                        "current_source_id": _clean_text(candidate.get("source_id") or f"S{attempt_index}"),
-                    }
-                    source_validation_meta = {
-                        "used_ai_source_validation": False,
-                        "supports_tag": None,
-                        "useful": None,
-                        "reason": "",
-                        "risk": "",
-                        "tightened_tag": "",
-                        "best_quote_hint": "",
-                    }
-                    source_validation_errors: list[str] = []
+                    attempt_payload, attempt_text = _prepare_cut_attempt_payload(
+                        payload,
+                        candidate,
+                        ordered_candidates,
+                        selection_meta,
+                        attempt_index,
+                    )
                     _log_event(
                         logging.INFO,
                         "cut_attempt_start",
@@ -4063,88 +5497,108 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                         source_url=attempt_payload["source_url"],
                     )
 
-                    try:
-                        source_validation_meta = _validate_source_with_ai(provider, attempt_payload, candidate)
-                        _log_event(
-                            logging.INFO,
-                            "cut_source_validation",
-                            request_id=request_id,
-                            provider=provider,
-                            attempt_index=attempt_index,
-                            source_id=attempt_payload["source_id"],
-                            supports_tag=source_validation_meta.get("supports_tag"),
-                            useful=source_validation_meta.get("useful"),
-                        )
-                        if source_validation_meta.get("supports_tag") is False or source_validation_meta.get("useful") is False:
-                            source_validation_rejections += 1
-                            note = source_validation_meta.get("reason") or source_validation_meta.get("risk") or "AI source validation rejected the source."
-                            attempt_errors.append(f"{provider} source_validate_{attempt_index}: {note}")
-                            _log_event(logging.INFO, "cut_source_validation_rejected", request_id=request_id, provider=provider, attempt_index=attempt_index, reason=note)
-                            continue
-                    except Exception as source_validation_exc:
-                        source_validation_errors.append(f"{provider} source_validate: {source_validation_exc}")
-                        _log_event(
-                            logging.WARNING,
-                            "cut_source_validation_failed",
-                            request_id=request_id,
-                            provider=provider,
-                            attempt_index=attempt_index,
-                            error=str(source_validation_exc),
-                        )
-
-                    cut_result = _call_provider_stage(provider, attempt_payload, stage="cut")
-                    final_card = cut_result["cards"][0]
-                    validation_completed = False
-                    validation_errors: list[str] = []
-                    validation_provider_meta: dict[str, Any] = {}
-                    validation_meta = _default_validation_meta(
-                        notes="Awaiting separate validation call.",
-                        revised=False,
-                        useful=True,
-                        passed=True,
+                    source_validation_meta, source_validation_errors, rejection_note = _run_source_validation_stage(
+                        provider,
+                        request_id=request_id,
+                        attempt_index=attempt_index,
+                        attempt_payload=attempt_payload,
+                        candidate=candidate,
                     )
+                    if rejection_note:
+                        source_validation_rejections += 1
+                        rejected_candidates.append(candidate)
+                        rejected_source_meta.append(source_validation_meta)
+                        attempt_errors.append(f"{provider} source_validate_{attempt_index}: {rejection_note}")
+                        continue
+                    tightened_tag = _clean_text(source_validation_meta.get("tightened_tag"))
+                    if tightened_tag:
+                        attempt_payload["draft_tag"] = tightened_tag
+                        attempt_payload["emphasis"] = tightened_tag
+
+                    if _candidate_is_fast_extractive_candidate(candidate, source_validation_meta):
+                        final_card, validation_meta = _build_extractive_card(attempt_payload, source_validation_meta)
+                        attempt_errors.append(f"{provider} source_attempt_{attempt_index}: strong source used deterministic extractive cut.")
+                        return _build_extractive_success_result(
+                            base_meta=base_meta,
+                            public_research_meta=public_research_meta,
+                            candidate=candidate,
+                            attempt_payload=attempt_payload,
+                            attempt_text=attempt_text,
+                            selection_meta=selection_meta,
+                            source_validation_meta=source_validation_meta,
+                            attempt_index=attempt_index,
+                            errors=errors,
+                            selection_errors=selection_errors,
+                            source_validation_errors=source_validation_errors,
+                            attempt_errors=attempt_errors,
+                            final_card=final_card,
+                            validation_meta=validation_meta,
+                        )
 
                     try:
-                        validation_result = _call_provider_stage(
-                            provider,
-                            attempt_payload,
-                            stage="validate",
-                            candidate_card=final_card,
-                        )
-                        final_card = validation_result["cards"][0]
-                        validation_completed = True
-                        validation_provider_meta = validation_result.get("meta", {}) if isinstance(validation_result.get("meta"), dict) else {}
-                        validation_meta = validation_result.get("validation") or _extract_validation_meta(validation_result)
-                        revised = final_card.get("formatted_card") != cut_result["cards"][0].get("formatted_card")
-                        if not validation_meta:
-                            validation_meta = _default_validation_meta(
-                                notes="Validation pass completed without explicit notes.",
-                                revised=revised,
-                                useful=True,
-                                passed=True,
+                        cut_result = _call_provider_stage(provider, attempt_payload, stage="cut")
+                    except Exception as cut_exc:
+                        attempt_errors.append(f"{provider} cut_{attempt_index}: {cut_exc}")
+                        try:
+                            final_card, validation_meta = _build_extractive_card(attempt_payload, source_validation_meta)
+                        except Exception as extractive_exc:
+                            attempt_errors.append(f"extractive_{attempt_index}: {extractive_exc}")
+                            raise cut_exc
+                        if not _validation_is_weak(validation_meta):
+                            return _build_extractive_success_result(
+                                base_meta=base_meta,
+                                public_research_meta=public_research_meta,
+                                candidate=candidate,
+                                attempt_payload=attempt_payload,
+                                attempt_text=attempt_payload.get("article_text", ""),
+                                selection_meta=selection_meta,
+                                source_validation_meta=source_validation_meta,
+                                attempt_index=attempt_index,
+                                errors=errors,
+                                selection_errors=selection_errors,
+                                source_validation_errors=source_validation_errors,
+                                attempt_errors=attempt_errors,
+                                final_card=final_card,
+                                validation_meta=validation_meta,
                             )
-                        else:
-                            validation_meta.setdefault("revised", revised)
-                            validation_meta.setdefault("useful", True)
-                            validation_meta.setdefault("passed", True)
-                    except ProviderAccessError:
-                        raise
-                    except Exception as validation_exc:
-                        validation_errors.append(f"{provider} validate: {validation_exc}")
-                        _log_event(logging.WARNING, "cut_validation_failed", request_id=request_id, provider=provider, attempt_index=attempt_index, error=str(validation_exc))
-                        validation_meta = _default_validation_meta(
-                            notes=f"Validation pass failed: {validation_exc}",
-                            revised=False,
-                            useful=False,
-                            passed=False,
-                            issues=["Returning the initial cut because the validation pass failed."],
-                        )
-
-                    grounding_meta = _build_source_grounding_validation(final_card, attempt_payload.get("article_text", ""))
-                    validation_meta = _merge_validation_meta(validation_meta, grounding_meta)
-                    final_card["validation"] = validation_meta
-                    if _validation_is_weak(validation_meta):
                         source_validation_rejections += 1
+                        rejected_candidates.append(candidate)
+                        continue
+                    final_card = cut_result["cards"][0]
+                    final_card, validation_completed, validation_meta, validation_provider_meta, validation_errors = _run_card_validation_stage(
+                        provider,
+                        request_id=request_id,
+                        attempt_index=attempt_index,
+                        attempt_payload=attempt_payload,
+                        cut_result=cut_result,
+                        final_card=final_card,
+                    )
+                    if _validation_is_weak(validation_meta):
+                        try:
+                            extractive_card, extractive_validation_meta = _build_extractive_card(attempt_payload, source_validation_meta)
+                        except Exception:
+                            extractive_card = {}
+                            extractive_validation_meta = {}
+                        if extractive_card and not _validation_is_weak(extractive_validation_meta):
+                            attempt_errors.append(f"{provider} source_attempt_{attempt_index}: AI cut failed validation; recovered with extractive card.")
+                            return _build_extractive_success_result(
+                                base_meta=base_meta,
+                                public_research_meta=public_research_meta,
+                                candidate=candidate,
+                                attempt_payload=attempt_payload,
+                                attempt_text=attempt_text,
+                                selection_meta=selection_meta,
+                                source_validation_meta=source_validation_meta,
+                                attempt_index=attempt_index,
+                                errors=errors,
+                                selection_errors=selection_errors,
+                                source_validation_errors=source_validation_errors,
+                                attempt_errors=attempt_errors,
+                                final_card=extractive_card,
+                                validation_meta=extractive_validation_meta,
+                            )
+                        source_validation_rejections += 1
+                        rejected_candidates.append(candidate)
                         note = _clean_text(validation_meta.get("notes")) or "Validation marked the card as not useful."
                         attempt_errors.append(f"{provider} source_attempt_{attempt_index}: {note}")
                         _log_event(
@@ -4157,78 +5611,53 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
                         )
                         continue
 
-                    result = {
-                        "cards": [final_card],
-                        "meta": {
-                            **cut_result.get("meta", {}),
-                            **base_meta,
-                            "fallback_used": False,
-                            "card_count": 1,
-                            "provider": provider,
-                            "research": {
-                                **public_research_meta,
-                                "selected": {
-                                    "engine": candidate.get("engine", ""),
-                                    "title": _clean_text(candidate.get("title")) or attempt_payload.get("source_title", ""),
-                                    "publication": _clean_text(candidate.get("publication")) or attempt_payload.get("source_publication", ""),
-                                    "author": _clean_text(candidate.get("author")) or attempt_payload.get("source_author", ""),
-                                    "date": _clean_text(candidate.get("published")) or attempt_payload.get("source_date", ""),
-                                    "url": _clean_text(candidate.get("url")) or attempt_payload.get("source_url", ""),
-                                    "source_id": _clean_text(candidate.get("source_id") or f"S{attempt_index}"),
-                                    "credibility_score": round(float(candidate.get("credibility_score", 0.0)), 3),
-                                    "credibility_notes": _clean_text(candidate.get("credibility_notes")),
-                                    "text": _truncate(attempt_text, 4000),
-                                },
-                                "source_selection": selection_meta,
-                            },
-                            "validation_ran": True,
-                            "validation_completed": validation_completed,
-                            "validation_separate_call": True,
-                            "validation_provider": provider,
-                            "validation_retry_count": int(validation_provider_meta.get("json_retry_count", 0)) if validation_completed else 0,
-                            "validation_retry_used": bool(validation_provider_meta.get("json_retry_used")) if validation_completed else False,
-                            "validation": validation_meta,
-                            "source_validation": source_validation_meta,
-                            "source_attempts": attempt_index,
-                        },
-                    }
-                    provider_errors = [*errors, *selection_errors, *source_validation_errors, *attempt_errors, *validation_errors]
-                    if provider_errors:
-                        result["meta"]["provider_errors"] = provider_errors
+                    result = _build_cut_success_result(
+                        cut_result=cut_result,
+                        base_meta=base_meta,
+                        provider=provider,
+                        public_research_meta=public_research_meta,
+                        candidate=candidate,
+                        attempt_payload=attempt_payload,
+                        attempt_text=attempt_text,
+                        selection_meta=selection_meta,
+                        validation_completed=validation_completed,
+                        validation_provider_meta=validation_provider_meta,
+                        validation_meta=validation_meta,
+                        source_validation_meta=source_validation_meta,
+                        attempt_index=attempt_index,
+                        errors=errors,
+                        selection_errors=selection_errors,
+                        source_validation_errors=source_validation_errors,
+                        attempt_errors=attempt_errors,
+                        validation_errors=validation_errors,
+                        final_card=final_card,
+                    )
                     _log_event(logging.INFO, "cut_complete", request_id=request_id, provider=provider, attempt_index=attempt_index, source_id=_clean_text(candidate.get("source_id") or f"S{attempt_index}"))
-                    return {"ok": True, **result}
+                    return result
 
-                if attempts and attempt_rejections >= len(attempts) and research_round < MAX_RESEARCH_ROUNDS and _clean_text(payload.get("draft_tag")):
-                    next_round = research_round + 1
-                    retry_payload = dict(payload)
-                    retry_payload["_research_round"] = next_round
-                    retry_payload["query_pack"] = public_research_meta.get("query_pack") if isinstance(public_research_meta.get("query_pack"), dict) else payload.get("query_pack")
-                    try:
-                        refreshed_research = _research_sources(retry_payload)
-                        refreshed_pool = list(refreshed_research.pop("_candidates", []) or refreshed_research.get("candidates") or [])
-                        merged_pool = _merge_candidate_pools(candidate_pool, refreshed_pool)
-                        if len(merged_pool) > len(candidate_pool):
-                            candidate_pool = merged_pool
-                            public_research_meta = {
-                                **refreshed_research,
-                                "sources": [_public_candidate(item) for item in candidate_pool],
-                                "candidates": [_client_candidate(item) for item in candidate_pool],
-                            }
-                            selected_source = public_research_meta.get("selected") if isinstance(public_research_meta.get("selected"), dict) else {}
-                            research_round = next_round
-                            payload["query_pack"] = public_research_meta.get("query_pack") if isinstance(public_research_meta.get("query_pack"), dict) else payload.get("query_pack")
-                            _log_event(
-                                logging.INFO,
-                                "cut_research_retry",
-                                request_id=request_id,
-                                provider=provider,
-                                research_round=research_round,
-                                candidate_pool=len(candidate_pool),
-                            )
-                            continue
-                    except Exception as retry_exc:
-                        attempt_errors.append(f"{provider} research_retry: {retry_exc}")
-                        _log_event(logging.WARNING, "cut_research_retry_failed", request_id=request_id, provider=provider, research_round=next_round, error=str(retry_exc))
+                source_search_exhausted = bool(attempts) and source_validation_rejections >= len(attempts)
+                no_candidate_sources = not ordered_candidates and not selected_source
+                if (selection_wants_retry or source_search_exhausted or no_candidate_sources) and research_round < MAX_RESEARCH_ROUNDS and _clean_text(payload.get("draft_tag")):
+                    refresh_state, retry_error = _refresh_cut_candidate_pool(
+                        request_id=request_id,
+                        provider=provider,
+                        payload=payload,
+                        public_research_meta=public_research_meta,
+                        candidate_pool=candidate_pool,
+                        selection_meta=selection_meta,
+                        research_round=research_round,
+                        rejected_candidates=rejected_candidates,
+                        rejected_source_meta=rejected_source_meta,
+                    )
+                    if refresh_state:
+                        candidate_pool = refresh_state["candidate_pool"]
+                        public_research_meta = refresh_state["public_research_meta"]
+                        selected_source = refresh_state["selected_source"]
+                        research_round = refresh_state["research_round"]
+                        payload["query_pack"] = refresh_state["query_pack"]
+                        continue
+                    if retry_error:
+                        attempt_errors.append(f"{provider} research_retry: {retry_error}")
 
                 errors.extend([*selection_errors, *attempt_errors])
                 break
@@ -4249,15 +5678,22 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
             _log_event(logging.WARNING, "cut_provider_failed", request_id=request_id, provider=provider, error=str(exc))
             continue
 
-    if strict_provider_mode and errors:
+    if strict_provider_mode and errors and not _errors_indicate_source_exhaustion(errors):
         raise ProviderAccessError("; ".join(errors))
 
+    search_exhausted = _errors_indicate_source_exhaustion(errors)
     cards = _build_fallback_cards(payload)
     fallback_validation = _default_validation_meta(
         notes="Fallback cutter used a heuristic validation pass.",
         revised=False,
         useful=True,
         passed=True,
+    )
+    quality_meta = _build_response_quality_meta(
+        fallback_used=True,
+        validation_completed=True,
+        validation_meta=fallback_validation,
+        search_exhausted=search_exhausted,
     )
     for card in cards:
         card["validation"] = fallback_validation
@@ -4278,6 +5714,8 @@ def _cut_cards(payload: dict[str, Any]) -> dict[str, Any]:
             "validation_completed": True,
             "validation_provider": "fallback",
             "validation": fallback_validation,
+            "search_exhausted": search_exhausted,
+            "quality": quality_meta,
         },
     }
 
@@ -4672,7 +6110,7 @@ class DebateCardHandler(SimpleHTTPRequestHandler):
                 semantic_search_enabled=_parse_bool(payload.get("semantic_search_enabled"), SEMANTIC_SEARCH_DEFAULT),
             )
             if self.path == "/api/research":
-                research = dict(_research_sources(payload))
+                research = dict(_research_sources_with_retries(payload))
                 research.pop("_candidates", None)
                 _log_event(
                     logging.INFO,

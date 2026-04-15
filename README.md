@@ -2,6 +2,11 @@
 
 Debate evidence cutter with a static frontend, a Python stdlib backend, draft-tag source discovery, semantic or literal query refinement, one-card iterative cutting, queued multi-tag cutting, session card storage, `.verbatim.docx` export, local or remote model support, full-URL citations, source credibility scoring, span-based underlining/highlighting, manual ChatGPT copy/paste support, and a deterministic fallback when no model is available.
 
+## Documentation
+
+- Architecture: `docs/ARCHITECTURE.md`
+- Debugging: `docs/DEBUGGING.md`
+
 ## What This Is For
 
 The app is built around a debate workflow, not a generic chat workflow:
@@ -605,6 +610,12 @@ The `meta` object includes:
 - `used_ai`
 - `fallback_used`
 - `fallback_reason` when applicable
+- `search_exhausted` when source retries ran out of usable candidates
+- `quality` with:
+  - `delivery_gate_passed`
+  - `quality_gate_passed`
+  - `tier`
+  - `failures`
 - `card_count`
 - `validation`
 - `validation_completed`
@@ -617,6 +628,20 @@ The `meta` object includes:
 - `query_refinement_used`
 - `query_refinement_provider`
 - `executed_queries`
+
+### Reliability Suite
+
+Run the checked-in live suite with:
+
+```powershell
+$env:PYTHONDONTWRITEBYTECODE='1'
+py -3 scripts/reliability_suite.py --openai-compat-timeout 60
+```
+
+The suite reports both:
+
+- delivery success: the API returned a usable card response
+- quality success: the response passed the stricter `meta.quality.quality_gate_passed` gate
 
 ### `POST /api/queue`
 
