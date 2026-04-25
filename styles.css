@@ -65,6 +65,52 @@ button {
   z-index: 1;
 }
 
+.policy-header {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.policy-panel {
+  padding: 0;
+}
+
+.policy-body {
+  padding: 26px 24px 30px;
+  display: grid;
+  gap: 14px;
+}
+
+.policy-body h2 {
+  margin-top: 10px;
+  font-size: 1.4rem;
+}
+
+.policy-body p,
+.policy-body li {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.policy-body ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.site-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 4px 2px;
+}
+
+.site-footer a {
+  color: var(--accent-strong);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(184, 227, 107, 0.35);
+}
+
+.site-footer a:hover {
+  border-bottom-color: rgba(184, 227, 107, 0.75);
+}
+
 .eyebrow {
   width: fit-content;
   padding: 6px 10px;

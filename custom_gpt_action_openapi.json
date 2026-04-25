@@ -7,8 +7,8 @@
   },
   "servers": [
     {
-      "url": "https://YOUR-DEPLOYED-DOMAIN.example.com",
-      "description": "Replace with the public HTTPS domain where your server is deployed."
+      "url": "http://75.194.146.17:8000",
+      "description": "Current public base URL for the server."
     }
   ],
   "paths": {

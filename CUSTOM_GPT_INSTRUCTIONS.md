@@ -36,7 +36,7 @@ Follow this workflow in order:
 
 ## Trigger: you have identified a source URL and need the exact text
 Instruction:
-- Use `extractCardText` on `YOUR-DEPLOYED-DOMAIN.example.com`.
+- Use `extractCardText` on `75.194.146.17:8000`.
 - Call it only after you have already chosen the source.
 - Include one request item per source URL.
 - Include `tag_line` if you already know the card tag you want.
@@ -45,7 +45,7 @@ Instruction:
 
 ## Trigger: the user wants a Word document
 Instruction:
-- Use `exportCardsDocx` on `YOUR-DEPLOYED-DOMAIN.example.com`.
+- Use `exportCardsDocx` on `75.194.146.17:8000`.
 - Pass `formatted_cards` when you already have final card text assembled.
 - Pass `title` when the user gives a file name or block name. If none is provided, create a short descriptive title.
 - After the action returns, give the user the download link plainly.

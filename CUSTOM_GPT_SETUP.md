@@ -7,8 +7,8 @@
 
 ## Before Importing
 
-1. Deploy this server to a public HTTPS domain.
-2. Replace `https://YOUR-DEPLOYED-DOMAIN.example.com` in `custom_gpt_action_openapi.json` with your real base URL.
+1. Make sure this server is reachable at `http://75.194.146.17:8000`.
+2. If your public base URL changes, update the `servers[0].url` value in `custom_gpt_action_openapi.json`.
 3. Make sure that deployed server exposes:
    - `POST /api/custom-gpt/extract`
    - `POST /api/custom-gpt/export/docx`
@@ -48,10 +48,11 @@ Uses ChatGPT web search to find a source for a claim, proposes a debate tag, cal
 
 ## Important Launch Notes
 
-- If you publish or share a GPT with actions publicly, OpenAI requires a valid Privacy Policy URL for the action.
+- If you publish or share a GPT with actions publicly, OpenAI requires a valid Privacy Policy URL for the action. This site now serves one at `http://75.194.146.17:8000/privacy.html`.
 - A GPT can use either apps or actions, not both at once.
 - In Enterprise or Edu workspaces, action domains may be restricted by workspace allowlists.
 - The intended workflow is `web-first, extract-second, format-in-chat, export-optional`.
+- The schema is currently pointed at `http://75.194.146.17:8000`. If ChatGPT rejects a non-HTTPS action endpoint, move the server behind HTTPS and update the schema URL again.
 
 ## Official Docs Used
 
