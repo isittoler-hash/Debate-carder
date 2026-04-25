@@ -7,6 +7,44 @@ Debate evidence cutter with a static frontend, a Python stdlib backend, draft-ta
 - Architecture: `docs/ARCHITECTURE.md`
 - Debugging: `docs/DEBUGGING.md`
 
+## Custom GPT API
+
+For ChatGPT Custom GPT Actions, use the new JSON-first endpoints instead of the browser orchestration flow:
+
+- `GET /openapi.json`
+- `POST /api/custom-gpt/extract`
+- `POST /api/custom-gpt/export/docx`
+
+`POST /api/custom-gpt/extract` accepts one or more URL requests with `start_snippet` and `end_snippet`, fetches the source text, extracts the text between those snippet bounds, and returns both the raw excerpt and a card-compatible JSON object.
+
+Example:
+
+```json
+{
+  "requests": [
+    {
+      "url": "https://example.com/article",
+      "start_snippet": "Tariffs increase input prices",
+      "end_snippet": "manufacturers pass those costs on",
+      "tag_line": "Tariffs raise manufacturing costs"
+    }
+  ]
+}
+```
+
+`POST /api/custom-gpt/export/docx` accepts either structured `cards` objects or `formatted_cards` strings/objects, writes a `.verbatim.docx` file into the server's `downloads/` folder, and returns a JSON payload with a `download_url`.
+
+Example:
+
+```json
+{
+  "title": "Tariff Neg",
+  "formatted_cards": [
+    "Tariffs raise manufacturing costs\nYap 25 [full cite] //IT\n\nTariffs raise input costs for manufacturers and those costs are often passed downstream."
+  ]
+}
+```
+
 ## What This Is For
 
 The app is built around a debate workflow, not a generic chat workflow:

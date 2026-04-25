@@ -1,0 +1,278 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Debate Card Custom GPT API",
+    "description": "Actions for extracting debate-card text from URLs and generating a verbatim Word document download link.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://YOUR-DEPLOYED-DOMAIN.example.com",
+      "description": "Replace with the public HTTPS domain where your server is deployed."
+    }
+  ],
+  "paths": {
+    "/api/custom-gpt/extract": {
+      "post": {
+        "operationId": "extractCardText",
+        "summary": "Fetch URLs and extract text between snippets",
+        "description": "Downloads each source URL, extracts text between the provided snippet bounds, and returns both raw excerpts and card-compatible JSON.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requests": {
+                    "type": "array",
+                    "description": "One or more source extraction requests.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string",
+                          "format": "uri",
+                          "description": "Public URL to fetch."
+                        },
+                        "start_snippet": {
+                          "type": "string",
+                          "description": "Snippet near the beginning of the desired passage."
+                        },
+                        "end_snippet": {
+                          "type": "string",
+                          "description": "Snippet near the end of the desired passage."
+                        },
+                        "tag_line": {
+                          "type": "string",
+                          "description": "Optional card tag to include in the returned card object."
+                        },
+                        "source_title": {
+                          "type": "string"
+                        },
+                        "source_author": {
+                          "type": "string"
+                        },
+                        "source_date": {
+                          "type": "string"
+                        },
+                        "source_publication": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "url"
+                      ]
+                    }
+                  },
+                  "domain_blacklist": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Optional domains to block from fetching."
+                  }
+                },
+                "required": [
+                  "requests"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Extraction results and card-compatible objects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ok": {
+                            "type": "boolean"
+                          },
+                          "index": {
+                            "type": "integer"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "resolved_url": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "author": {
+                            "type": "string"
+                          },
+                          "published": {
+                            "type": "string"
+                          },
+                          "publication": {
+                            "type": "string"
+                          },
+                          "extracted_text": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "match": {
+                            "type": "object",
+                            "properties": {
+                              "strategy": {
+                                "type": "string"
+                              },
+                              "start_snippet_found": {
+                                "type": "boolean"
+                              },
+                              "end_snippet_found": {
+                                "type": "boolean"
+                              },
+                              "start_index": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "end_index": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ]
+                              },
+                              "excerpt_length": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "card": {
+                            "type": "object",
+                            "description": "Card-compatible object returned when extraction succeeds."
+                          }
+                        }
+                      }
+                    },
+                    "cards": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "requested_count": {
+                          "type": "integer"
+                        },
+                        "success_count": {
+                          "type": "integer"
+                        },
+                        "failed_count": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/custom-gpt/export/docx": {
+      "post": {
+        "operationId": "exportCardsDocx",
+        "summary": "Generate a verbatim Word document download link",
+        "description": "Accepts formatted cards or structured card objects, generates a .verbatim.docx file, and returns a download URL.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Title used to name the output file."
+                  },
+                  "cards": {
+                    "type": "array",
+                    "description": "Structured card objects or formatted-card objects.",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "formatted_cards": {
+                    "type": "array",
+                    "description": "Formatted card strings or objects. Use this when ChatGPT already assembled the final debate cards.",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The .docx file has been created and can be downloaded from the returned URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "filename": {
+                      "type": "string"
+                    },
+                    "download_url": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "download_path": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -58,6 +58,8 @@ ROOT = Path(__file__).resolve().parent
 _load_env_file(ROOT / ".env")
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+DOWNLOADS_DIR = ROOT / "downloads"
+DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "server.log"
 REQUEST_LOG_FILE = LOG_DIR / "requests.log"
 RESEARCH_LOG_FILE = LOG_DIR / "research.log"
@@ -5815,6 +5817,444 @@ def _slugify_filename(text: str) -> str:
     return slug or "debate-cards"
 
 
+def _collapse_text_with_map(text: str) -> tuple[str, list[int]]:
+    collapsed: list[str] = []
+    index_map: list[int] = []
+    last_was_space = True
+    for index, char in enumerate(text):
+        if char.isspace():
+            if not last_was_space:
+                collapsed.append(" ")
+                index_map.append(index)
+            last_was_space = True
+            continue
+        collapsed.append(char.lower())
+        index_map.append(index)
+        last_was_space = False
+    while collapsed and collapsed[-1] == " ":
+        collapsed.pop()
+        index_map.pop()
+    return "".join(collapsed), index_map
+
+
+def _find_text_span(text: str, snippet: str) -> tuple[int, int] | None:
+    haystack = _clean_text(text)
+    needle = _clean_text(snippet)
+    if not haystack or not needle:
+        return None
+
+    lower_haystack = haystack.lower()
+    lower_needle = needle.lower()
+    direct_index = lower_haystack.find(lower_needle)
+    if direct_index >= 0:
+        return direct_index, direct_index + len(needle)
+
+    collapsed_haystack, index_map = _collapse_text_with_map(haystack)
+    collapsed_needle, _ = _collapse_text_with_map(needle)
+    if not collapsed_haystack or not collapsed_needle:
+        return None
+    collapsed_index = collapsed_haystack.find(collapsed_needle)
+    if collapsed_index < 0:
+        return None
+    start = index_map[collapsed_index]
+    end = index_map[collapsed_index + len(collapsed_needle) - 1] + 1
+    return start, end
+
+
+def _extract_text_between_snippets(article_text: str, start_snippet: str, end_snippet: str) -> tuple[str, dict[str, Any]]:
+    text = _clean_text(article_text)
+    start_snippet = _clean_text(start_snippet)
+    end_snippet = _clean_text(end_snippet)
+    if not text:
+        raise ValueError("Fetched source text was empty")
+    if not start_snippet and not end_snippet:
+        raise ValueError("start_snippet or end_snippet is required")
+
+    start_span = _find_text_span(text, start_snippet) if start_snippet else None
+    end_span = _find_text_span(text, end_snippet) if end_snippet else None
+    excerpt = ""
+    strategy = ""
+
+    if start_span and end_span:
+        left = min(start_span[0], end_span[0])
+        right = max(start_span[1], end_span[1])
+        excerpt = text[left:right].strip()
+        strategy = "between_snippets"
+    elif start_span:
+        excerpt = text[start_span[0]:].strip()
+        strategy = "start_snippet_to_end"
+    elif end_span:
+        excerpt = text[:end_span[1]].strip()
+        strategy = "start_of_text_to_end_snippet"
+    else:
+        raise ValueError("Neither snippet could be found in the fetched source text")
+
+    return excerpt, {
+        "strategy": strategy,
+        "start_snippet_found": bool(start_span),
+        "end_snippet_found": bool(end_span),
+        "start_index": start_span[0] if start_span else None,
+        "end_index": end_span[1] if end_span else None,
+        "excerpt_length": len(excerpt),
+    }
+
+
+def _normalize_extract_requests(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_items = payload.get("requests")
+    if raw_items is None:
+        raw_items = payload.get("items")
+    if raw_items is None:
+        raw_items = payload.get("sources")
+
+    items = to_array(raw_items) if raw_items is not None else [payload]
+    requests: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        request = {
+            "url": _clean_text(item.get("url") or item.get("source_url") or item.get("sourceUrl")),
+            "start_snippet": _clean_text(item.get("start_snippet") or item.get("startSnippet") or item.get("start_text") or item.get("startText") or item.get("start")),
+            "end_snippet": _clean_text(item.get("end_snippet") or item.get("endSnippet") or item.get("end_text") or item.get("endText") or item.get("end")),
+            "tag_line": _clean_text(item.get("tag_line") or item.get("tagLine") or item.get("title") or item.get("heading")),
+            "source_title": _clean_text(item.get("source_title") or item.get("sourceTitle") or item.get("title")),
+            "source_author": _clean_text(item.get("source_author") or item.get("sourceAuthor") or item.get("author")),
+            "source_date": _clean_text(item.get("source_date") or item.get("sourceDate") or item.get("date")),
+            "source_publication": _clean_text(item.get("source_publication") or item.get("sourcePublication") or item.get("publication") or item.get("outlet")),
+        }
+        if request["url"]:
+            requests.append(request)
+    return requests
+
+
+def _build_extract_card(item: dict[str, Any], article: dict[str, Any], excerpt: str) -> dict[str, Any]:
+    source = {
+        "title": _clean_text(item.get("source_title") or article.get("title")),
+        "author": _clean_text(item.get("source_author") or article.get("author")),
+        "date": _clean_text(item.get("source_date") or article.get("published")),
+        "publication": _clean_text(item.get("source_publication") or article.get("publication") or _hostname(_clean_text(article.get("url")))),
+        "url": _clean_text(article.get("url")),
+    }
+    date_accessed = _today_accessed()
+    tag_line = _clean_text(item.get("tag_line") or source["title"] or "Evidence excerpt")
+    full_context = excerpt.strip()
+    underlined_spans = [{"start": 0, "end": len(full_context)}] if full_context else []
+    card = {
+        "tag_line": tag_line,
+        "title": tag_line,
+        "tag": tag_line,
+        "short_citation": _build_short_citation(source),
+        "full_citation": _build_full_citation(source, date_accessed),
+        "verbal_citation": _build_verbal_citation(source),
+        "full_context": full_context,
+        "body": full_context,
+        "card_text": full_context,
+        "underlined_spans": underlined_spans,
+        "highlighted_spans": [],
+        "source_url": source["url"],
+        "source_title": source["title"],
+        "source_author": source["author"],
+        "source_date": source["date"],
+        "source_publication": source["publication"],
+        "date_accessed": date_accessed,
+    }
+    card["cite_line"] = _build_cite_line(card["short_citation"], card["full_citation"])
+    card["formatted_card"] = _build_formatted_card(card)
+    return card
+
+
+def _extract_card_text(payload: dict[str, Any]) -> dict[str, Any]:
+    requests = _normalize_extract_requests(payload)
+    if not requests:
+        raise ValueError("At least one request with a url is required")
+
+    blocked_domains = _parse_domain_blacklist(payload.get("domain_blacklist") or payload.get("domainBlacklist") or payload.get("blocked_domains") or payload.get("blockedDomains"))
+    results: list[dict[str, Any]] = []
+
+    for index, item in enumerate(requests, start=1):
+        url = _normalize_web_url(item.get("url", ""))
+        if not url:
+            results.append({"ok": False, "index": index, "error": "A valid url is required"})
+            continue
+        if _domain_is_blocked(url, blocked_domains):
+            results.append({"ok": False, "index": index, "url": url, "error": f"URL is blocked by the current domain blacklist: {url}"})
+            continue
+        try:
+            article = _fetch_article(url)
+            article_text = _clean_text(article.get("text"))
+            excerpt, match_meta = _extract_text_between_snippets(article_text, item.get("start_snippet", ""), item.get("end_snippet", ""))
+            card = _build_extract_card(item, article, excerpt)
+            results.append(
+                {
+                    "ok": True,
+                    "index": index,
+                    "url": url,
+                    "resolved_url": _clean_text(article.get("url")),
+                    "title": _clean_text(article.get("title")),
+                    "author": _clean_text(article.get("author")),
+                    "published": _clean_text(article.get("published")),
+                    "publication": _clean_text(article.get("publication")),
+                    "extracted_text": excerpt,
+                    "match": match_meta,
+                    "card": card,
+                }
+            )
+        except Exception as exc:
+            results.append({"ok": False, "index": index, "url": url, "error": str(exc)})
+
+    cards = [item["card"] for item in results if item.get("ok") and isinstance(item.get("card"), dict)]
+    return {
+        "ok": bool(cards),
+        "results": results,
+        "cards": cards,
+        "meta": {
+            "requested_count": len(requests),
+            "success_count": len(cards),
+            "failed_count": len(requests) - len(cards),
+        },
+    }
+
+
+def _parse_formatted_card_text(text: str) -> dict[str, str]:
+    lines = text.replace("\r\n", "\n").split("\n")
+    first_index = next((index for index, line in enumerate(lines) if line.strip()), None)
+    if first_index is None:
+        return {"tag_line": "", "cite_line": "", "full_context": ""}
+    second_index = next((index for index in range(first_index + 1, len(lines)) if lines[index].strip()), None)
+    tag_line = lines[first_index].strip()
+    if second_index is None:
+        return {"tag_line": tag_line, "cite_line": "", "full_context": ""}
+    cite_line = lines[second_index].strip()
+    full_context = "\n".join(lines[second_index + 1:]).strip()
+    return {"tag_line": tag_line, "cite_line": cite_line, "full_context": full_context}
+
+
+def _coerce_export_card(raw_card: Any) -> dict[str, Any]:
+    if isinstance(raw_card, str):
+        working = {"formatted_card": raw_card}
+    elif isinstance(raw_card, dict):
+        working = dict(raw_card)
+    else:
+        return {}
+
+    source = working.get("source") if isinstance(working.get("source"), dict) else {}
+    formatted_card = _clean_text(working.get("formatted_card") or working.get("formattedCard"))
+    parsed_card = _parse_formatted_card_text(formatted_card) if formatted_card else {"tag_line": "", "cite_line": "", "full_context": ""}
+
+    tag_line = _clean_text(working.get("tag_line") or working.get("tagLine") or working.get("title") or parsed_card.get("tag_line"))
+    full_context = _clean_text(
+        working.get("full_context")
+        or working.get("fullContext")
+        or working.get("body")
+        or working.get("card_text")
+        or working.get("cardText")
+        or parsed_card.get("full_context")
+    )
+
+    source_info = {
+        "title": _clean_text(working.get("source_title") or working.get("sourceTitle") or source.get("title")),
+        "author": _clean_text(working.get("source_author") or working.get("sourceAuthor") or working.get("author") or source.get("author")),
+        "date": _clean_text(working.get("source_date") or working.get("sourceDate") or working.get("date") or source.get("date")),
+        "publication": _clean_text(working.get("source_publication") or working.get("sourcePublication") or working.get("publication") or working.get("outlet") or source.get("publication") or source.get("outlet")),
+        "url": _clean_text(working.get("source_url") or working.get("sourceUrl") or working.get("url") or source.get("url")),
+    }
+    date_accessed = _clean_text(working.get("date_accessed") or working.get("dateAccessed") or working.get("dox")) or _today_accessed()
+    short_citation = _clean_text(working.get("short_citation") or working.get("shortCitation")) or _build_short_citation(source_info)
+    full_citation = _clean_text(working.get("full_citation") or working.get("fullCitation") or working.get("citation")) or _build_full_citation(source_info, date_accessed)
+    cite_line = _clean_text(working.get("cite_line") or working.get("citeLine") or parsed_card.get("cite_line")) or _build_cite_line(short_citation, full_citation)
+
+    underlined_spans = _normalize_span_list(working.get("underlined_spans") or working.get("underlinedSpans"), full_context)
+    highlighted_spans = _normalize_span_list(working.get("highlighted_spans") or working.get("highlightedSpans"), full_context)
+    if not underlined_spans and full_context:
+        underlined_spans = [{"start": 0, "end": len(full_context)}]
+
+    highlight_text = _clean_text(working.get("highlighted_text") or working.get("highlightedText"))
+    if full_context and highlight_text and not highlighted_spans:
+        highlight_span = _find_text_span(full_context, highlight_text)
+        if highlight_span:
+            highlighted_spans = [{"start": highlight_span[0], "end": highlight_span[1]}]
+
+    return {
+        "tag_line": tag_line or "Debate card",
+        "title": tag_line or "Debate card",
+        "tag": tag_line or "Debate card",
+        "short_citation": short_citation,
+        "full_citation": full_citation,
+        "cite_line": cite_line,
+        "verbal_citation": _clean_text(working.get("verbal_citation") or working.get("verbalCitation")) or _build_verbal_citation(source_info),
+        "full_context": full_context,
+        "body": full_context,
+        "card_text": full_context,
+        "underlined_spans": underlined_spans,
+        "highlighted_spans": highlighted_spans,
+        "source_url": source_info["url"],
+        "source_title": source_info["title"],
+        "source_author": source_info["author"],
+        "source_date": source_info["date"],
+        "source_publication": source_info["publication"],
+        "date_accessed": date_accessed,
+        "formatted_card": formatted_card,
+    }
+
+
+def _normalize_export_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_cards = payload.get("cards")
+    if raw_cards is None:
+        raw_cards = payload.get("formatted_cards")
+    if raw_cards is None:
+        raw_cards = payload.get("formattedCards")
+
+    cards = [_coerce_export_card(card) for card in to_array(raw_cards)]
+    cards = [card for card in cards if isinstance(card, dict) and any(card.values())]
+    if not cards:
+        raise ValueError("cards or formatted_cards is required for .docx export")
+    return cards
+
+
+def _build_server_base_url(handler: SimpleHTTPRequestHandler) -> str:
+    proto = _clean_text(handler.headers.get("X-Forwarded-Proto")).split(",", 1)[0].strip() or "http"
+    host = _clean_text(handler.headers.get("X-Forwarded-Host")).split(",", 1)[0].strip() or _clean_text(handler.headers.get("Host"))
+    if not host:
+        host = f"127.0.0.1:{os.getenv('PORT', '8000')}"
+    return f"{proto}://{host}"
+
+
+def _write_docx_download(body: bytes, filename: str) -> Path:
+    safe_name = f"{uuid4().hex[:10]}-{_slugify_filename(filename)}"
+    path = DOWNLOADS_DIR / safe_name
+    path.write_bytes(body)
+    return path
+
+
+def _export_docx_download(payload: dict[str, Any], handler: SimpleHTTPRequestHandler) -> dict[str, Any]:
+    body, filename = _export_docx(payload)
+    path = _write_docx_download(body, filename)
+    relative_url = f"/{path.relative_to(ROOT).as_posix()}"
+    return {
+        "ok": True,
+        "filename": filename,
+        "download_url": f"{_build_server_base_url(handler)}{relative_url}",
+        "download_path": relative_url,
+    }
+
+
+def _openapi_spec() -> dict[str, Any]:
+    return {
+        "openapi": "3.1.0",
+        "info": {
+            "title": "Debate Card Custom GPT API",
+            "version": "1.0.0",
+            "description": "JSON-first endpoints for ChatGPT Actions: extract card text from URLs using snippet bounds, then generate a verbatim .docx download link from formatted cards.",
+        },
+        "paths": {
+            "/api/custom-gpt/extract": {
+                "post": {
+                    "operationId": "extractCardText",
+                    "summary": "Fetch source URLs and extract text between snippets",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "requests": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "url": {"type": "string", "format": "uri"},
+                                                    "start_snippet": {"type": "string"},
+                                                    "end_snippet": {"type": "string"},
+                                                    "tag_line": {"type": "string"},
+                                                },
+                                                "required": ["url"],
+                                            },
+                                        }
+                                    },
+                                    "required": ["requests"],
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Extracted text plus card-compatible metadata",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "ok": {"type": "boolean"},
+                                            "results": {"type": "array", "items": {"type": "object"}},
+                                            "cards": {"type": "array", "items": {"type": "object"}},
+                                            "meta": {"type": "object"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+            "/api/custom-gpt/export/docx": {
+                "post": {
+                    "operationId": "exportCardsDocx",
+                    "summary": "Create a verbatim Word document and return a download URL",
+                    "requestBody": {
+                        "required": True,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "title": {"type": "string"},
+                                        "cards": {
+                                            "type": "array",
+                                            "items": {
+                                                "oneOf": [
+                                                    {"type": "string"},
+                                                    {"type": "object"},
+                                                ]
+                                            },
+                                        },
+                                        "formatted_cards": {
+                                            "type": "array",
+                                            "items": {
+                                                "oneOf": [
+                                                    {"type": "string"},
+                                                    {"type": "object"},
+                                                ]
+                                            },
+                                        },
+                                    },
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "The .docx file has been written to the server and can be downloaded from the returned URL.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "ok": {"type": "boolean"},
+                                            "filename": {"type": "string"},
+                                            "download_url": {"type": "string", "format": "uri"},
+                                            "download_path": {"type": "string"},
+                                        },
+                                    }
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+        },
+    }
+
+
 def _w_run(
     text: str,
     *,
@@ -6061,9 +6501,7 @@ def _build_docx_bytes(cards: list[dict[str, Any]], title: str) -> bytes:
 
 
 def _export_docx(payload: dict[str, Any]) -> tuple[bytes, str]:
-    cards = [card for card in to_array(payload.get("cards")) if isinstance(card, dict)]
-    if not cards:
-        raise ValueError("cards is required for .docx export")
+    cards = _normalize_export_cards(payload)
     normalized_cards = _normalize_model_cards(cards, len(cards))
     title = _clean_text(payload.get("title") or payload.get("draft_tag") or normalized_cards[0].get("tag_line") or "debate-cards")
     filename = f"{_slugify_filename(title)}.verbatim.docx"
@@ -6088,6 +6526,9 @@ class DebateCardHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        if self.path in {"/openapi.json", "/api/openapi.json"}:
+            _json_response(self, HTTPStatus.OK, _openapi_spec())
+            return
         if self.path in {"/", ""}:
             index = ROOT / "index.html"
             if index.exists():
@@ -6097,7 +6538,8 @@ class DebateCardHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         request_id = uuid4().hex[:10]
         try:
-            payload = _normalize_payload(_read_json_body(self))
+            raw_payload = _read_json_body(self)
+            payload = _normalize_payload(raw_payload)
             payload["_request_id"] = request_id
             _log_event(
                 logging.INFO,
@@ -6121,6 +6563,16 @@ class DebateCardHandler(SimpleHTTPRequestHandler):
                     source_count=len(to_array(research.get("sources"))),
                 )
                 _json_response(self, HTTPStatus.OK, {"ok": True, "request_id": request_id, "research": research})
+                return
+            if self.path == "/api/custom-gpt/extract":
+                result = _extract_card_text(raw_payload)
+                _log_event(logging.INFO, "request_success", request_id=request_id, path=self.path, card_count=len(to_array(result.get("cards"))))
+                _json_response(self, HTTPStatus.OK, {"request_id": request_id, **result})
+                return
+            if self.path == "/api/custom-gpt/export/docx":
+                result = _export_docx_download(raw_payload, self)
+                _log_event(logging.INFO, "request_success", request_id=request_id, path=self.path, filename=result.get("filename"))
+                _json_response(self, HTTPStatus.OK, {"request_id": request_id, **result})
                 return
             if self.path == "/api/queue":
                 result = _queue_cut_cards(payload)
