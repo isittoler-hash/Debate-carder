@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Debate Card Custom GPT API",
-    "description": "Actions for extracting debate-card text from URLs and generating a verbatim Word document download link.",
+    "description": "The GPT should do its own source-finding, claim analysis, tag writing, and card drafting. These actions are only for retrieving the exact passage from a source URL after the GPT has already chosen a source, and for exporting final cards to a verbatim Word document when the user asks.",
     "version": "1.0.0"
   },
   "servers": [
@@ -16,7 +16,7 @@
       "post": {
         "operationId": "extractCardText",
         "summary": "Fetch URLs and extract text between snippets",
-        "description": "Downloads each source URL, extracts text between the provided snippet bounds, and returns both raw excerpts and card-compatible JSON.",
+        "description": "Use this only after the GPT has already researched and chosen a source URL. Do not use this action to search for sources. The GPT should find the source itself, identify a start snippet and end snippet, then call this action to retrieve the exact passage it wants to quote and cut into a card.",
         "requestBody": {
           "required": true,
           "content": {
@@ -26,26 +26,26 @@
                 "properties": {
                   "requests": {
                     "type": "array",
-                    "description": "One or more source extraction requests.",
+                    "description": "One or more already-selected sources to extract from. The GPT should only send URLs it has already decided are worth cutting.",
                     "items": {
                       "type": "object",
                       "properties": {
                         "url": {
                           "type": "string",
                           "format": "uri",
-                          "description": "Public URL to fetch."
+                          "description": "The chosen source URL. This should already be the source the GPT wants to cut a card from."
                         },
                         "start_snippet": {
                           "type": "string",
-                          "description": "Snippet near the beginning of the desired passage."
+                          "description": "A snippet near the beginning of the desired quotation. The GPT should identify this from the source it selected."
                         },
                         "end_snippet": {
                           "type": "string",
-                          "description": "Snippet near the end of the desired passage."
+                          "description": "A snippet near the end of the desired quotation. The GPT should identify this from the source it selected."
                         },
                         "tag_line": {
                           "type": "string",
-                          "description": "Optional card tag to include in the returned card object."
+                          "description": "Optional tag the GPT intends to use for the card."
                         },
                         "source_title": {
                           "type": "string"
@@ -160,7 +160,7 @@
                           },
                           "card": {
                             "type": "object",
-                            "description": "Card-compatible object returned when extraction succeeds."
+                            "description": "Card-compatible object returned when extraction succeeds. The GPT should still decide how to present and format the final card to the user."
                           }
                         }
                       }
@@ -197,7 +197,7 @@
       "post": {
         "operationId": "exportCardsDocx",
         "summary": "Generate a verbatim Word document download link",
-        "description": "Accepts formatted cards or structured card objects, generates a .verbatim.docx file, and returns a download URL.",
+        "description": "Use this only when the user explicitly wants a Word export. Do not call this during normal card cutting. Accepts formatted cards or structured card objects, generates a .verbatim.docx file, and returns a download URL.",
         "requestBody": {
           "required": true,
           "content": {
@@ -211,7 +211,7 @@
                   },
                   "cards": {
                     "type": "array",
-                    "description": "Structured card objects or formatted-card objects.",
+                    "description": "Structured card objects or formatted-card objects representing the GPT's final cards.",
                     "items": {
                       "oneOf": [
                         {
@@ -225,7 +225,7 @@
                   },
                   "formatted_cards": {
                     "type": "array",
-                    "description": "Formatted card strings or objects. Use this when ChatGPT already assembled the final debate cards.",
+                    "description": "Formatted card strings or objects. Use this when the GPT has already assembled the final debate cards and the user wants them exported.",
                     "items": {
                       "oneOf": [
                         {

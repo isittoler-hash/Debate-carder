@@ -19,15 +19,16 @@
 1. Open [chatgpt.com/gpts](https://chatgpt.com/gpts).
 2. Click `Create`.
 3. Open the `Configure` tab.
-4. Set your GPT name and description.
-5. Paste the contents of `CUSTOM_GPT_INSTRUCTIONS.md` into the `Instructions` field.
-6. In `Actions`, choose `Create new action`.
-7. Import `custom_gpt_action_openapi.json`, or host that file and import it by URL.
-8. Authentication:
+4. Enable `Web search` so the GPT can find sources on its own before calling the action.
+5. Set your GPT name and description.
+6. Paste the contents of `CUSTOM_GPT_INSTRUCTIONS.md` into the `Instructions` field.
+7. In `Actions`, choose `Create new action`.
+8. Import `custom_gpt_action_openapi.json`, or host that file and import it by URL.
+9. Authentication:
    - choose `None` if your deployed API is public and requires no secret
    - choose `API key` if you protect the endpoint
    - choose `OAuth` only if each end user must sign in to your backend
-9. Test both actions in Preview.
+10. Test `Web search` + `extractCardText` in Preview. Test `exportCardsDocx` only if you want `.docx` export.
 
 ## Suggested GPT Metadata
 
@@ -37,19 +38,20 @@ Debate Card Extractor and Verbatim Exporter
 
 ### Description
 
-Extracts debate evidence from source URLs using snippet bounds, formats debate cards, and returns a download link for a verbatim Word document.
+Uses ChatGPT web search to find a source for a claim, proposes a debate tag, calls `extractCardText` only to pull the exact passage from the chosen URL, and returns a formatted debate card in chat. `exportCardsDocx` is optional for later export.
 
 ### Conversation Starters
 
-- Extract a card from this URL between these two snippets.
-- Turn these excerpts into formatted debate cards.
-- Export these final cards into a verbatim Word doc.
+- Cut a card that says tariffs raise manufacturing costs.
+- Find a source for this claim, propose a tag, and cut a card.
+- Export these finished cards to a verbatim Word doc.
 
 ## Important Launch Notes
 
 - If you publish or share a GPT with actions publicly, OpenAI requires a valid Privacy Policy URL for the action.
 - A GPT can use either apps or actions, not both at once.
 - In Enterprise or Edu workspaces, action domains may be restricted by workspace allowlists.
+- The intended workflow is `web-first, extract-second, format-in-chat, export-optional`.
 
 ## Official Docs Used
 
